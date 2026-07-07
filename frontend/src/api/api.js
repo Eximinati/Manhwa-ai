@@ -23,6 +23,18 @@ async function fetchWithRetry(url, options, retries = 1) {
 }
 
 // ---------------------------------------------------------
+// 0. Analyze Script Style (POST)
+// ---------------------------------------------------------
+export const analyzeScriptStyle = async (formData) => {
+  const response = await fetchWithRetry(
+    `${API_URL}/api/v1/analyze_style`,
+    { method: "POST", body: formData }
+  );
+  if (!response.ok) throw await parseJSONResponse(response);
+  return await parseJSONResponse(response);
+};
+
+// ---------------------------------------------------------
 // 1. Start Audio Story Job (POST)
 // ---------------------------------------------------------
 // 1. Start Job

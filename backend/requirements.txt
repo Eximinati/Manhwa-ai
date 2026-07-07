@@ -13,6 +13,8 @@ numpy
 
 # AI/LLM
 groq
+openai
+google-generativeai
 
 # TTS
 pydub

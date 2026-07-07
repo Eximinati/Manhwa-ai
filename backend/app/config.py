@@ -29,7 +29,17 @@ os.makedirs(TTS_CACHE_DIR, exist_ok=True)
 os.makedirs(TEMP_DIR, exist_ok=True)
 
 # -----------------------------
-# 2. GROQ API KEY(S)
+# 2. AI PROVIDER SELECTION
+# -----------------------------
+# AI_PROVIDER = groq | google | openrouter
+# Each provider has its own free tier. See provider_utils.py for details.
+AI_PROVIDER = os.getenv("AI_PROVIDER", "groq")
+if AI_PROVIDER not in ("groq", "google", "openrouter"):
+    print(f"⚠️ Unknown AI_PROVIDER '{AI_PROVIDER}', falling back to 'groq'")
+    AI_PROVIDER = "groq"
+
+# -----------------------------
+# 3. GROQ API KEY(S)
 # -----------------------------
 # GROQ_API_KEYS (comma-separated, one key per Groq account) is preferred —
 # it lets app.utils.groq_pool rotate across multiple free-tier accounts to

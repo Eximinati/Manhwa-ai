@@ -1,6 +1,11 @@
 import os
 import random
 import asyncio
+import io
+import json
+import base64
+import uuid
+import traceback
 from fastapi import FastAPI, Form, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from celery.result import AsyncResult
@@ -10,6 +15,8 @@ from app.celery_app import celery_app
 from app.worker import process_manga_pdf_task
 
 from app.utils.supabase_utils import supabase_upload
+from app.utils.pdf_utils import extract_pdf_images_high_quality
+from app.utils.openai_utils import analyze_script_style
 from app.config import NARRATION_LANGUAGES, DEFAULT_LANGUAGE
 from supabase import create_client
 
@@ -37,6 +44,53 @@ def list_languages():
         for key, preset in NARRATION_LANGUAGES.items()
     }
 
+@app.post("/api/v1/analyze_style")
+async def analyze_style(
+    example_pdf: UploadFile = File(None),
+    example_script: str = Form(""),
+    language: str = Form(DEFAULT_LANGUAGE),
+):
+    """
+    Accept an optional example PDF (1-4 pages) + the corresponding narration
+    script text. Uses Groq vision to analyze the writing style and returns
+    a natural-language style guideline.
+    """
+    try:
+        if language not in NARRATION_LANGUAGES:
+            language = DEFAULT_LANGUAGE
+
+        example_images = []
+
+        if example_pdf:
+            file_bytes = await example_pdf.read()
+            temp_pdf = os.path.join("/tmp", f"style_{uuid.uuid4()}.pdf")
+            with open(temp_pdf, "wb") as f:
+                f.write(file_bytes)
+
+            images = extract_pdf_images_high_quality(temp_pdf, max_pages=4)
+            for img in images:
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=75, optimize=True)
+                example_images.append(buf.getvalue())
+
+            if os.path.exists(temp_pdf):
+                os.remove(temp_pdf)
+
+        if not example_images:
+            # No PDF — just analyze the script text alone for style
+            example_images = []
+
+        guideline = analyze_script_style(example_images, example_script, language)
+        if not guideline:
+            guideline = "No style guideline could be generated from the provided example."
+
+        return {"guideline": guideline}
+
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/v1/generate_audio_story")
 async def start_generation(
     manga_name: str = Form(...),
@@ -45,6 +99,7 @@ async def start_generation(
     manga_language: str = Form(DEFAULT_LANGUAGE),
     reading_direction: str = Form("right-to-left"),
     custom_instructions: str = Form(""),
+    style_guideline: str = Form(""),
     user_id: str = Form("")
 ):
     try:
@@ -70,7 +125,7 @@ async def start_generation(
         }).execute()
 
         process_manga_pdf_task.apply_async(
-            args=[task_id, manga_name, manga_genre, pdf_url, manga_language, reading_direction, custom_instructions],
+            args=[task_id, manga_name, manga_genre, pdf_url, manga_language, reading_direction, custom_instructions, style_guideline],
             task_id=task_id
         )
 

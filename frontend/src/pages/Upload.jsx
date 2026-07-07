@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { showToast } from "../utils/toast";
 import { Upload, Download, Loader2, Video, CheckCircle, AlertCircle, FileText, Trash } from "lucide-react";
-import { generateAudioStory, checkTaskStatus } from '../api/api';
+import { generateAudioStory, checkTaskStatus, analyzeScriptStyle } from '../api/api';
 import { generateVideoFromScenes } from '../utils/videoMaker';
 import Watermark from "../components/Watermark";
 
@@ -29,6 +29,12 @@ const UploadPage = () => {
   const [editingScript, setEditingScript] = useState(false);
   const [editedScenes, setEditedScenes] = useState([]);
   const [scriptStyle, setScriptStyle] = useState("");
+  const [scriptMode, setScriptMode] = useState("auto");
+  const [exampleFile, setExampleFile] = useState(null);
+  const [exampleScript, setExampleScript] = useState("");
+  const [styleGuideline, setStyleGuideline] = useState("");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const exampleFileRef = useRef(null);
 
   const SCRIPT_PRESETS = [
     { label: "🎬 Cinematic", desc: "Epic, movie-trailer narration", value: "Dramatic, epic, like a movie trailer. Use vivid imagery and build tension." },
@@ -68,17 +74,22 @@ const UploadPage = () => {
     setEditingScript(false);
     setEditedScenes([]);
     setScriptStyle("");
+    setScriptMode("auto");
+    setExampleFile(null);
+    setExampleScript("");
+    setStyleGuideline("");
+    setIsAnalyzing(false);
     setPhase("upload");
     ["pendingStory", "pendingFileName", "pendingVideoUrl", "isGeneratingVideo", "videoProgress", "videoLogs"].forEach(k => sessionStorage.removeItem(k));
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Escape to close
+  // Escape closes any phase
   useEffect(() => {
-    const handler = (e) => { if (e.key === "Escape" && phase === "done") resetAll(); };
+    const handler = (e) => { if (e.key === "Escape") resetAll(); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [phase]);
+  }, []);
 
   // Restore session
   useEffect(() => {
@@ -180,6 +191,7 @@ const UploadPage = () => {
       fd.append("manga_language", language);
       fd.append("reading_direction", readingDirection);
       if (scriptStyle) fd.append("custom_instructions", scriptStyle);
+      if (styleGuideline) fd.append("style_guideline", styleGuideline);
       if (user?.id) fd.append("user_id", user.id);
 
       const startRes = await generateAudioStory(fd);
@@ -236,19 +248,14 @@ const UploadPage = () => {
       }
 
       const allImgs = data.image_urls || data.panel_images || [];
-      const safeImgs = allImgs.filter((_, i) => !removedPanels.has(i));
       const allScenes = data.final_video_segments || [];
-      const safeScenes = allScenes.filter(s => !removedPanels.has(s.image_page_index));
-      const kept = allImgs.map((_, i) => i).filter(i => !removedPanels.has(i));
-      const idxMap = Object.fromEntries(kept.map((o, n) => [o, n]));
-      for (const sc of safeScenes) { sc.image_page_index = idxMap[sc.image_page_index] ?? sc.image_page_index; }
       if (editedScenes.length) {
-        for (let i = 0; i < safeScenes.length && i < editedScenes.length; i++) {
-          if (editedScenes[i]?.narration_segment) safeScenes[i].narration_segment = editedScenes[i].narration_segment;
+        for (let i = 0; i < allScenes.length && i < editedScenes.length; i++) {
+          if (editedScenes[i]?.narration_segment) allScenes[i].narration_segment = editedScenes[i].narration_segment;
         }
       }
-      if (!safeImgs.length) throw new Error("No images");
-      if (!safeScenes.length) throw new Error("No scenes");
+      if (!allImgs.length) throw new Error("No images");
+      if (!allScenes.length) throw new Error("No scenes");
       if (!data.audio_url) throw new Error("No audio");
 
       sessionStorage.setItem("isGeneratingVideo", "true");
@@ -256,8 +263,11 @@ const UploadPage = () => {
       sessionStorage.setItem("videoLogs", "[]");
 
       const r = await generateVideoFromScenes({
-        imageUrls: safeImgs, audioUrl: data.audio_url, scenes: safeScenes, orientation,
-        images: safeImgs, segments: safeScenes,
+        imageUrls: allImgs,
+        audioUrl: data.audio_url,
+        scenes: allScenes,
+        removedPanels,
+        orientation,
         onProgress: (p) => setVideoProgress(Math.min(Math.floor(p), 100)),
         onLog: (m) => setVideoLogs(prev => [...prev, m]),
       });
@@ -289,25 +299,56 @@ const UploadPage = () => {
     } catch { showToast.error("Download failed"); setIsDownloading(false); }
   };
 
+  const handleAnalyzeStyle = async () => {
+    if (!exampleScript.trim() && !exampleFile) { showToast.error("Provide example script or PDF"); return; }
+    setIsAnalyzing(true);
+    try {
+      const fd = new FormData();
+      if (exampleFile) fd.append("example_pdf", exampleFile);
+      fd.append("example_script", exampleScript);
+      fd.append("language", language);
+      const res = await analyzeScriptStyle(fd);
+      setStyleGuideline(res.guideline);
+      showToast.success("Style guide generated");
+    } catch (err) {
+      showToast.error(err.message || "Analysis failed");
+    }
+    setIsAnalyzing(false);
+  };
+
+  const handleExampleFile = (f) => {
+    if (!f || !f.type.includes("pdf")) { showToast.error("PDF only"); return; }
+    setExampleFile(f);
+  };
+
   return (
     <main className="min-h-screen bg-[#0A0A1A] text-white px-6 py-12 relative">
       <Watermark text="生成" sub="GENERATE" />
       <div className="max-w-4xl mx-auto">
-        {/* Phase indicator */}
-        <div className="flex items-center gap-3 mb-16 font-body text-xs text-gray-600">
-          {["Upload", "Configure", "Process", "Preview", "Render", "Done"].map((p, i) => {
-            const phases = ["upload", "configure", "processing", "preview", "rendering", "done"];
-            const idx = phases.indexOf(phase);
-            const active = i === idx; const past = i < idx;
-            return (
-              <div key={p} className="flex items-center gap-3">
-                <span className={active ? "text-[#FF006E]" : past ? "text-[#00F5D4]" : ""}>
-                  {past ? "✓" : active ? "◆" : "○"} {p}
-                </span>
-                {i < phases.length - 1 && <span className="text-white/10">—</span>}
-              </div>
-            );
-          })}
+        {/* Phase indicator + close button */}
+        <div className="flex items-start justify-between mb-16">
+          <div className="flex items-center gap-3 font-body text-xs text-gray-600">
+            {["Upload", "Configure", "Process", "Preview", "Render", "Done"].map((p, i) => {
+              const phases = ["upload", "configure", "processing", "preview", "rendering", "done"];
+              const idx = phases.indexOf(phase);
+              const active = i === idx; const past = i < idx;
+              return (
+                <div key={p} className="flex items-center gap-3">
+                  <span className={active ? "text-[#FF006E]" : past ? "text-[#00F5D4]" : ""}>
+                    {past ? "✓" : active ? "◆" : "○"} {p}
+                  </span>
+                  {i < phases.length - 1 && <span className="text-white/10">—</span>}
+                </div>
+              );
+            })}
+          </div>
+          {phase !== "upload" && (
+            <button onClick={resetAll}
+              className="w-8 h-8 flex items-center justify-center text-white/20 hover:text-[#FF006E] transition-colors text-lg leading-none flex-shrink-0 mt-0.5"
+              title="Close and go back to upload">
+              ✕
+            </button>
+          )}
         </div>
 
         {/* PHASE: Upload */}
@@ -368,26 +409,96 @@ const UploadPage = () => {
               </div>
             </div>
 
-            {/* Script Style */}
+            {/* Script Guide */}
             <div className="mb-10">
-              <label className="font-body text-xs text-gray-500 uppercase tracking-wider mb-3 block">Script style</label>
-              <div className="flex flex-wrap gap-2 mb-4">
-                {SCRIPT_PRESETS.map((p) => (
-                  <button key={p.value} onClick={() => setScriptStyle(scriptStyle === p.value ? "" : p.value)}
-                    className={`px-3 py-2 text-xs font-body tracking-wider border transition-all ${
-                      scriptStyle === p.value
-                        ? "border-[#FF006E] text-[#FF006E] bg-[#FF006E]/10"
-                        : "border-white/10 text-gray-500 hover:border-white/30 hover:text-white"
+              <label className="font-body text-xs text-gray-500 uppercase tracking-wider mb-4 block">Script guide</label>
+
+              {/* Mode selector */}
+              <div className="flex gap-0 mb-6 border border-white/10 w-fit">
+                {[
+                  { key: "auto", label: "AI decides" },
+                  { key: "write", label: "Write guide" },
+                  { key: "learn", label: "Learn from example" },
+                ].map((m) => (
+                  <button key={m.key} onClick={() => { setScriptMode(m.key); if (m.key !== "learn") setStyleGuideline(""); }}
+                    className={`px-4 py-2 text-xs font-body tracking-wider transition-all ${
+                      scriptMode === m.key ? "bg-[#FF006E] text-white" : "text-gray-500 hover:text-white"
                     }`}>
-                    {p.label}
-                    <span className="block text-[9px] opacity-60 font-normal">{p.desc}</span>
+                    {m.label}
                   </button>
                 ))}
               </div>
-              <textarea value={scriptStyle} onChange={(e) => setScriptStyle(e.target.value)}
-                placeholder="Or write your own instructions: 'Narrate like a noir detective. Make every panel sound like a crime scene report.'"
-                className="w-full p-3 bg-transparent border border-white/10 text-white font-body text-sm resize-none focus:border-[#FF006E] transition-colors"
-                rows={2} />
+
+              {/* Mode: AI decides — nothing to show */}
+              {scriptMode === "auto" && (
+                <p className="font-body text-xs text-gray-600 italic">AI will write the script based on the manga content and selected language. No guidance needed.</p>
+              )}
+
+              {/* Mode: Write guide — presets + textarea */}
+              {scriptMode === "write" && (
+                <>
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {SCRIPT_PRESETS.map((p) => (
+                      <button key={p.value} onClick={() => setScriptStyle(scriptStyle === p.value ? "" : p.value)}
+                        className={`px-3 py-2 text-xs font-body tracking-wider border transition-all ${
+                          scriptStyle === p.value
+                            ? "border-[#FF006E] text-[#FF006E] bg-[#FF006E]/10"
+                            : "border-white/10 text-gray-500 hover:border-white/30 hover:text-white"
+                        }`}>
+                        {p.label}
+                        <span className="block text-[9px] opacity-60 font-normal">{p.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <textarea value={scriptStyle} onChange={(e) => setScriptStyle(e.target.value)}
+                    placeholder="Write your own: 'Narrate like a noir detective. Make every panel sound like a crime scene report.'"
+                    className="w-full p-3 bg-transparent border border-white/10 text-white font-body text-sm resize-none focus:border-[#FF006E] transition-colors"
+                    rows={2} />
+                </>
+              )}
+
+              {/* Mode: Learn from example */}
+              {scriptMode === "learn" && (
+                <div className="space-y-4">
+                  <p className="font-body text-xs text-gray-600">Upload a sample manga PDF and paste its narration script. AI will analyze the writing style and create a guideline for your manga.</p>
+
+                  {/* Example file upload */}
+                  <div className="flex items-center gap-4">
+                    <button onClick={() => exampleFileRef.current?.click()}
+                      className="px-4 py-2 text-xs font-body border border-white/10 text-gray-400 hover:border-white/30 hover:text-white transition-all">
+                      {exampleFile ? `📄 ${exampleFile.name}` : "+ Upload example PDF"}
+                    </button>
+                    <input ref={exampleFileRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => handleExampleFile(e.target.files[0])} />
+                    {exampleFile && (
+                      <button onClick={() => setExampleFile(null)} className="font-body text-[10px] text-gray-600 hover:text-red-400 transition-colors">
+                        ✕ remove
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Example script text */}
+                  <textarea value={exampleScript} onChange={(e) => setExampleScript(e.target.value)}
+                    placeholder="Paste the example narration script here... (1-2 paragraphs showing the style you want)"
+                    className="w-full p-3 bg-transparent border border-white/10 text-white font-body text-sm resize-none focus:border-[#FF006E] transition-colors"
+                    rows={4} />
+
+                  {/* Analyze button */}
+                  <button onClick={handleAnalyzeStyle} disabled={isAnalyzing}
+                    className="px-5 py-2 text-xs font-body border border-[#FF006E]/50 text-[#FF006E] hover:bg-[#FF006E]/10 transition-all disabled:opacity-30">
+                    {isAnalyzing ? "Analyzing..." : "⚡ Analyze Style"}
+                  </button>
+
+                  {/* Editable guideline */}
+                  {styleGuideline && (
+                    <div className="border border-[#00F5D4]/20 bg-[#00F5D4]/5 p-4">
+                      <label className="font-body text-[10px] text-[#00F5D4] uppercase tracking-wider mb-2 block">AI-generated style guideline (edit freely)</label>
+                      <textarea value={styleGuideline} onChange={(e) => setStyleGuideline(e.target.value)}
+                        className="w-full bg-transparent text-white font-body text-sm resize-none focus:outline-none"
+                        rows={5} />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <button onClick={handleGenerateStory}
@@ -414,68 +525,82 @@ const UploadPage = () => {
         {/* PHASE: Preview */}
         {phase === "preview" && (
           <div>
-            {/* Panels */}
-            <div className="mb-10">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="display text-2xl tracking-wider text-white">
-                  Panels <span className="font-body text-sm text-gray-500">({panelImages.length - removedPanels.size}/{panelImages.length})</span>
-                </h2>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="display text-2xl tracking-wider text-white">
+                Storyboard <span className="font-body text-sm text-gray-500">({editedScenes.filter(s => !removedPanels.has(s.image_page_index)).length}/{editedScenes.length} scenes)</span>
+              </h2>
+              <div className="flex items-center gap-3">
                 {removedPanels.size > 0 && (
                   <button onClick={() => setRemovedPanels(new Set())} className="font-body text-xs text-gray-500 hover:text-white transition-colors">
                     Restore all
                   </button>
                 )}
               </div>
-              <div className="columns-2 sm:columns-3 md:columns-4 gap-2">
-                {panelImages.map((url, idx) => {
-                  const removed = removedPanels.has(idx);
-                  return (
-                    <div key={idx} className={`break-inside-avoid mb-2 relative group ${removed ? "opacity-30" : ""}`}>
-                      <img src={url} alt={`panel-${idx}`} crossOrigin="anonymous" referrerPolicy="no-referrer"
-                        className="w-full object-cover border border-white/10"
-                        onError={(e) => { e.target.style.opacity = 0.3; }} />
-                      <button onClick={() => { const n = new Set(removedPanels); removed ? n.delete(idx) : n.add(idx); setRemovedPanels(n); }}
-                        className="absolute top-1 right-1 w-6 h-6 bg-black/80 hover:bg-[#FF006E] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
-                        <Trash className="w-3 h-3 text-white" />
-                      </button>
-                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
-                        <span className="font-body text-[10px] text-white">#{idx + 1}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
 
-            {/* Script */}
-            <div className="mb-10">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="display text-xl tracking-wider text-white">Script</h2>
-                <button onClick={() => setEditingScript(!editingScript)}
-                  className="font-body text-xs text-gray-500 hover:text-white transition-colors">
-                  {editingScript ? "Done" : "Edit"}
-                </button>
-              </div>
-              <div className="space-y-3 max-h-96 overflow-y-auto">
-                {editedScenes.map((scene, idx) => {
-                  if (removedPanels.has(scene.image_page_index)) return null;
-                  return (
-                    <div key={idx} className="border-l-2 border-white/10 pl-4">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-body text-[10px] text-gray-500 uppercase tracking-wider">Scene {idx + 1}</span>
-                        <span className="font-body text-[10px] text-gray-600">({scene.duration}s)</span>
+            {/* Panel-by-panel cards */}
+            <div className="space-y-5 mb-10">
+              {editedScenes.map((scene, idx) => {
+                const imgIdx = scene.image_page_index;
+                const removed = removedPanels.has(imgIdx);
+                const imgUrl = panelImages[imgIdx];
+                if (!imgUrl) return null;
+                return (
+                  <div key={idx}
+                    className={`flex flex-col border transition-all ${
+                      removed ? "border-white/5 opacity-30" : "border-white/10 hover:border-white/20"
+                    }`}>
+                    {/* Image + Narration side by side */}
+                    <div className="flex flex-col sm:flex-row">
+                      {/* Image — big */}
+                      <div className="sm:w-[300px] sm:min-w-[300px] flex-shrink-0 bg-black/40 relative border-b sm:border-b-0 sm:border-r border-white/5">
+                        <img src={imgUrl} alt={`panel ${imgIdx}`}
+                          crossOrigin="anonymous" referrerPolicy="no-referrer"
+                          className="w-full h-auto sm:h-[220px] object-cover"
+                          onError={(e) => { e.target.style.opacity = 0.3; }} />
+                        <div className="absolute top-2 left-2 bg-black/80 px-2 py-1">
+                          <span className="font-body text-xs text-white/70">Panel #{idx + 1}</span>
+                        </div>
                       </div>
-                      {editingScript ? (
+
+                      {/* Narration */}
+                      <div className="flex-1 p-4 sm:p-5 flex flex-col">
+                        <div className="flex items-center gap-3 mb-3">
+                          <span className="font-body text-[11px] text-gray-500 uppercase tracking-wider">Scene {idx + 1}</span>
+                          {scene.duration && <span className="font-body text-[11px] text-gray-600">({scene.duration}s)</span>}
+                          {!removed ? (
+                            <span className="font-body text-[10px] text-[#00F5D4]/60">active</span>
+                          ) : (
+                            <span className="font-body text-[10px] text-red-400/60">skipped</span>
+                          )}
+                        </div>
                         <textarea value={scene.narration_segment}
-                          onChange={(e) => { const n = [...editedScenes]; n[idx] = { ...n[idx], narration_segment: e.target.value }; setEditedScenes(n); }}
-                          className="w-full bg-transparent border border-white/10 p-3 font-body text-sm text-white resize-none focus:border-[#00F5D4] transition-colors" rows={2} />
-                      ) : (
-                        <p className="font-body text-sm text-gray-300">{scene.narration_segment}</p>
-                      )}
+                          onChange={(e) => {
+                            const n = [...editedScenes];
+                            n[idx] = { ...n[idx], narration_segment: e.target.value };
+                            setEditedScenes(n);
+                          }}
+                          className="w-full bg-white/5 text-white font-body text-base leading-relaxed resize-none focus:outline-none focus:bg-white/[0.08] transition-colors p-3 rounded"
+                          rows={5} />
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
+
+                    {/* Remove bar */}
+                    <div className="flex border-t border-white/5">
+                      <button onClick={() => { const n = new Set(removedPanels); removed ? n.delete(imgIdx) : n.add(imgIdx); setRemovedPanels(n); }}
+                        className={`flex-1 py-2.5 flex items-center justify-center gap-2 font-body text-xs tracking-wider transition-all ${
+                          removed ? "text-[#00F5D4] bg-[#00F5D4]/5" : "text-white/20 hover:text-red-400 hover:bg-red-500/5"
+                        }`}>
+                        <Trash className="w-3.5 h-3.5" />
+                        {removed ? "Restore panel" : "Remove panel"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              {editedScenes.length === 0 && (
+                <p className="font-body text-sm text-gray-600 italic py-8 text-center">No story panels found. The PDF may have been all non-story content (ads, covers).</p>
+              )}
             </div>
 
             {/* Action */}
@@ -513,13 +638,7 @@ const UploadPage = () => {
 
         {/* PHASE: Done */}
         {phase === "done" && videoUrl && (
-          <div className="group relative">
-            {/* X close button */}
-            <button onClick={resetAll}
-              className="absolute -top-1 -right-1 w-8 h-8 flex items-center justify-center text-white/20 hover:text-[#FF006E] transition-colors text-lg leading-none z-10">
-              ✕
-            </button>
-
+          <div>
             <div className="flex items-center justify-between mb-6">
               <div>
                 <span className="magazine-kicker">Complete</span>

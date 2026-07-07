@@ -1,26 +1,18 @@
 import * as Mp4Muxer from 'mp4-muxer';
 
-// =====================================================================
-// Constants (Optimized for Speed & Stability)
-// =====================================================================
-// ⚡ Both dimensions fit within the 'Level 3.1' codec limit (fixing NotSupportedError)
 const ORIENTATIONS = {
-  vertical: { width: 720, height: 1280 },   // Shorts / Reels style
-  horizontal: { width: 1280, height: 720 }, // Standard long-form YouTube
+  vertical: { width: 720, height: 1280 },
+  horizontal: { width: 1280, height: 720 },
 };
-// ⚡ FIX 2: 24 FPS is standard for Anime and 20% faster to render than 30 FPS
 const FPS = 24;
-const VIDEO_BITRATE = 2_500_000; // 2.5 Mbps
+const VIDEO_BITRATE = 2_500_000;
 
-// =====================================================================
-// Helpers
-// =====================================================================
-async function downloadImage(url, filename, retries = 3) {
+async function downloadImage(url, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
       const response = await fetch(url);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return await response.blob(); 
+      return await response.blob();
     } catch (error) {
       if (i === retries - 1) throw error;
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -28,13 +20,9 @@ async function downloadImage(url, filename, retries = 3) {
   }
 }
 
-// =====================================================================
-// Canvas Drawer (Zoom/Pan Logic)
-// =====================================================================
 function drawFrameToCanvas(ctx, img, progress, type, canvasWidth, canvasHeight) {
   const { width: imgW, height: imgH } = img;
 
-  // Clear background
   ctx.fillStyle = 'black';
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
@@ -53,7 +41,6 @@ function drawFrameToCanvas(ctx, img, progress, type, canvasWidth, canvasHeight) 
     ctx.drawImage(img, destX, drawY, contentWidth, scaledH);
   }
   else {
-    // Zoom Effect
     const zoomLevel = 1.0 + (0.15 * progress);
     const srcW = imgW / zoomLevel;
     const srcH = imgH / zoomLevel;
@@ -75,22 +62,19 @@ function determineEffectType(img, canvasWidth, canvasHeight) {
   return (imageAspect > contentAspect * 1.5) ? 'pan_down' : 'zoom';
 }
 
-// =====================================================================
-// Audio Processor
-// =====================================================================
 async function processAudio(audioUrl, muxer) {
   const response = await fetch(audioUrl);
   const arrayBuffer = await response.arrayBuffer();
   const audioCtx = new AudioContext();
   const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-  
+
   const audioEncoder = new AudioEncoder({
     output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
     error: (e) => console.error(e)
   });
 
   audioEncoder.configure({
-    codec: 'mp4a.40.2', 
+    codec: 'mp4a.40.2',
     numberOfChannels: audioBuffer.numberOfChannels,
     sampleRate: audioBuffer.sampleRate,
     bitrate: 128000
@@ -99,12 +83,12 @@ async function processAudio(audioUrl, muxer) {
   const numberOfChannels = audioBuffer.numberOfChannels;
   const length = audioBuffer.length;
   const sampleRate = audioBuffer.sampleRate;
-  const chunkSize = sampleRate * 1; 
-  
+  const chunkSize = sampleRate * 1;
+
   for (let frame = 0; frame < length; frame += chunkSize) {
     const size = Math.min(chunkSize, length - frame);
     const data = new Float32Array(size * numberOfChannels);
-    
+
     for (let ch = 0; ch < numberOfChannels; ch++) {
       const channelData = audioBuffer.getChannelData(ch);
       for (let i = 0; i < size; i++) {
@@ -123,8 +107,7 @@ async function processAudio(audioUrl, muxer) {
 
     audioEncoder.encode(audioData);
     audioData.close();
-    
-    // Yield to keep UI responsive
+
     await new Promise(r => setTimeout(r, 0));
   }
 
@@ -132,13 +115,11 @@ async function processAudio(audioUrl, muxer) {
   audioCtx.close();
 }
 
-// =====================================================================
-// MAIN FUNCTION (Optimized)
-// =====================================================================
 export async function generateVideoFromScenes({
   imageUrls,
   audioUrl,
   scenes,
+  removedPanels,
   onProgress,
   onLog,
   orientation = 'vertical',
@@ -147,7 +128,7 @@ export async function generateVideoFromScenes({
   const { width: CANVAS_WIDTH, height: CANVAS_HEIGHT } = ORIENTATIONS[orientation] || ORIENTATIONS.vertical;
 
   try {
-    log(`[WebCodecs] Starting optimized generation (${orientation}, ${CANVAS_WIDTH}x${CANVAS_HEIGHT})...`);
+    log(`[WebCodecs] Starting (${orientation}, ${CANVAS_WIDTH}x${CANVAS_HEIGHT})...`);
 
     const muxer = new Mp4Muxer.Muxer({
       target: new Mp4Muxer.ArrayBufferTarget(),
@@ -161,7 +142,6 @@ export async function generateVideoFromScenes({
       error: (e) => console.error('[VideoEncoder]', e)
     });
 
-    // ⚡ FIX 1: This codec setting works for both 720x1280 and 1280x720
     videoEncoder.configure({
       codec: 'avc1.42001f',
       width: CANVAS_WIDTH,
@@ -181,54 +161,66 @@ export async function generateVideoFromScenes({
       const bmp = await createImageBitmap(blob);
       imageBitmaps.push(bmp);
     }
-    
-    let globalTimestampMicro = 0;
-    const totalDurationMicro = scenes.reduce((sum, s) => sum + (s.duration || 3.0), 0) * 1_000_000;
-    
-    // 2. Render Loop (Optimized)
-    for (let i = 0; i < scenes.length; i++) {
-      const scene = scenes[i];
-      let imgIdx = scene.image_page_index ?? (i % imageBitmaps.length);
-      if (typeof imgIdx !== 'number' || isNaN(imgIdx)) imgIdx = i % imageBitmaps.length;
-      imgIdx = Math.min(imgIdx, imageBitmaps.length - 1);
 
-      const img = imageBitmaps[imgIdx];
-      const effectType = determineEffectType(img, CANVAS_WIDTH, CANVAS_HEIGHT);
-      const durationSec = scene.duration || 3.0;
-      const totalFrames = Math.ceil(durationSec * FPS);
+    // 2. Calculate total timeline from full scene list
+    const lastScene = scenes[scenes.length - 1];
+    const totalDuration = lastScene ? lastScene.start_time + lastScene.duration : 0;
+    const totalFrames = Math.round(totalDuration * FPS);
+    const totalDurationMicro = totalDuration * 1_000_000;
 
-      log(`[Render] Scene ${i + 1}/${scenes.length}: ${durationSec}s (${totalFrames} frames)`);
+    log(`[Render] Total: ${totalDuration.toFixed(2)}s, ${totalFrames} frames @ ${FPS}fps`);
 
-      for (let frame = 0; frame < totalFrames; frame++) {
-        const progress = frame / totalFrames;
+    // 3. Render loop — scene switching driven by start_time
+    for (let frame = 0; frame < totalFrames; frame++) {
+      const frameTime = frame / FPS;
 
-        drawFrameToCanvas(ctx, img, progress, effectType, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-        const videoFrame = new VideoFrame(canvas, {
-          timestamp: globalTimestampMicro,
-          duration: 1000000 / FPS 
-        });
-
-        // ⚡ FIX 2: Prevent "Codec reclaimed" by pausing if queue is full
-        if (videoEncoder.encodeQueueSize > 5) {
-           await new Promise(r => setTimeout(r, 5));
-        }
-
-        videoEncoder.encode(videoFrame, { keyFrame: frame % 60 === 0 });
-        videoFrame.close();
-
-        globalTimestampMicro += (1000000 / FPS);
-        
-        // ⚡ FIX 3: Critical yield to Main Thread to prevent browser hang
-        if (frame % 10 === 0) {
-           await new Promise(r => setTimeout(r, 0));
-        }
+      // Find active scene by timestamp (binary search for speed)
+      let lo = 0, hi = scenes.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (scenes[mid].start_time <= frameTime) lo = mid;
+        else hi = mid - 1;
       }
-      
-      if (onProgress) onProgress((globalTimestampMicro / totalDurationMicro) * 80);
+      const scene = scenes[lo];
+      const isRemoved = removedPanels?.has(scene.image_page_index);
+
+      if (isRemoved || !imageBitmaps[scene.image_page_index]) {
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      } else {
+        const img = imageBitmaps[scene.image_page_index];
+        const effectType = determineEffectType(img, CANVAS_WIDTH, CANVAS_HEIGHT);
+        const progress = scene.duration > 0
+          ? Math.min((frameTime - scene.start_time) / scene.duration, 1.0)
+          : 0;
+        drawFrameToCanvas(ctx, img, progress, effectType, CANVAS_WIDTH, CANVAS_HEIGHT);
+      }
+
+      const timestamp = Math.round(frameTime * 1_000_000);
+      const videoFrame = new VideoFrame(canvas, {
+        timestamp,
+        duration: Math.round(1_000_000 / FPS),
+      });
+
+      if (videoEncoder.encodeQueueSize > 5) {
+        await new Promise(r => setTimeout(r, 5));
+      }
+
+      videoEncoder.encode(videoFrame, { keyFrame: frame % 60 === 0 });
+      videoFrame.close();
+
+      if (frame % 10 === 0) {
+        await new Promise(r => setTimeout(r, 0));
+      }
+
+      // Progress: 0-80% during render
+      if (frame % Math.max(1, Math.floor(totalFrames / 40)) === 0) {
+        const pct = totalDurationMicro > 0 ? (timestamp / totalDurationMicro) * 80 : 0;
+        if (onProgress) onProgress(Math.min(pct, 80));
+      }
     }
 
-    // 3. Audio Encoding
+    // 4. Audio
     if (audioUrl) {
       log('[Audio] Mixing audio...');
       try {
@@ -251,7 +243,7 @@ export async function generateVideoFromScenes({
     if (onProgress) onProgress(100);
     log('[Done] Video created!');
 
-    return { videoUrl, blob, duration: globalTimestampMicro / 1000000 };
+    return { videoUrl, blob, duration: totalDuration };
 
   } catch (error) {
     console.error(error);
@@ -259,9 +251,6 @@ export async function generateVideoFromScenes({
   }
 }
 
-// =====================================================================
-// Download Helper
-// =====================================================================
 export function downloadVideo(blob, filename = 'manhwa_video.mp4') {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

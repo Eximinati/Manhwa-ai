@@ -49,8 +49,10 @@ async def upload_images_parallel(image_bytes, manga_folder):
 # -------------------------------------------------------------------
 # 2. ASYNC LOGIC
 # -------------------------------------------------------------------
-async def _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_language=DEFAULT_LANGUAGE, reading_direction="right-to-left", custom_instructions=""):
+async def _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_language=DEFAULT_LANGUAGE, reading_direction="right-to-left", custom_instructions="", style_guideline=""):
     print(f"🚀 Starting Task: {task_id} | Manga: {manga_name} | Language: {manga_language} | Direction: {reading_direction}")
+    if style_guideline:
+        print(f"📋 Using style guideline ({len(style_guideline)} chars)")
     voice = get_language_preset(manga_language)["voice"]
     
     try:
@@ -79,9 +81,9 @@ async def _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_l
         manga_folder = f"{manga_name.replace(' ', '_').lower()}_{str_id[:8]}"
         image_urls = await upload_images_parallel(image_bytes, manga_folder)
 
-        # 4. Generate Script (covers every panel, not just the first few)
+        # 4. Generate Script (auto-skips ads/banners via model)
         print("📝 Generating Script...")
-        llm_output = generate_full_script(manga_name, manga_genre, manga_language, image_bytes, reading_direction, custom_instructions)
+        llm_output = generate_full_script(manga_name, manga_genre, manga_language, image_bytes, reading_direction, custom_instructions, style_guideline)
         scenes = llm_output.get("scenes", [])
 
         # 5. Generate Audio
@@ -99,8 +101,8 @@ async def _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_l
                 dur = 2.0
                 merged_audio += AudioSegment.silent(duration=2000)
             
-            sc["start_time"] = round(timeline, 2)
-            sc["duration"] = round(dur, 2)
+            sc["start_time"] = timeline
+            sc["duration"] = dur
             timeline += dur
             final_scenes.append(sc)
 
@@ -145,7 +147,7 @@ async def _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_l
 # 3. CELERY TASK
 # -------------------------------------------------------------------
 @celery_app.task(bind=True, name="process_manga_pdf")
-def process_manga_pdf_task(self, task_id, manga_name, manga_genre, pdf_url, manga_language=DEFAULT_LANGUAGE, reading_direction="right-to-left", custom_instructions=""):
+def process_manga_pdf_task(self, task_id, manga_name, manga_genre, pdf_url, manga_language=DEFAULT_LANGUAGE, reading_direction="right-to-left", custom_instructions="", style_guideline=""):
     """
     Celery Wrapper: Runs the async logic in a sync loop
     """
@@ -153,7 +155,7 @@ def process_manga_pdf_task(self, task_id, manga_name, manga_genre, pdf_url, mang
     asyncio.set_event_loop(loop)
     try:
         return loop.run_until_complete(
-            _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_language, reading_direction, custom_instructions)
+            _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_language, reading_direction, custom_instructions, style_guideline)
         )
     finally:
         loop.close()
