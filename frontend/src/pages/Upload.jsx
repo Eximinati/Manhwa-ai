@@ -28,6 +28,16 @@ const UploadPage = () => {
   const [removedPanels, setRemovedPanels] = useState(new Set());
   const [editingScript, setEditingScript] = useState(false);
   const [editedScenes, setEditedScenes] = useState([]);
+  const [scriptStyle, setScriptStyle] = useState("");
+
+  const SCRIPT_PRESETS = [
+    { label: "🎬 Cinematic", desc: "Epic, movie-trailer narration", value: "Dramatic, epic, like a movie trailer. Use vivid imagery and build tension." },
+    { label: "😂 Funny", desc: "Meme-y, casual roast style", value: "Funny, casual, roast the characters. Use modern slang and humor." },
+    { label: "🌙 Dark", desc: "Gritty, intense, serious tone", value: "Dark, gritty, serious. Focus on conflict, stakes, and emotional weight." },
+    { label: "💖 Romantic", desc: "Soft, emotional, poetic", value: "Soft, emotional, poetic. Focus on relationships and inner feelings." },
+    { label: "⚡ Hype", desc: "Short, punchy, high energy", value: "High energy, fast-paced. Short punchy sentences, intense hype." },
+    { label: "🧠 Analytical", desc: "Deep lore, detailed breakdown", value: "Analytical, detailed. Break down strategies, powers, and lore." },
+  ];
 
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
@@ -57,6 +67,7 @@ const UploadPage = () => {
     setRemovedPanels(new Set());
     setEditingScript(false);
     setEditedScenes([]);
+    setScriptStyle("");
     setPhase("upload");
     ["pendingStory", "pendingFileName", "pendingVideoUrl", "isGeneratingVideo", "videoProgress", "videoLogs"].forEach(k => sessionStorage.removeItem(k));
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -168,6 +179,7 @@ const UploadPage = () => {
       fd.append("manga_genre", "Action");
       fd.append("manga_language", language);
       fd.append("reading_direction", readingDirection);
+      if (scriptStyle) fd.append("custom_instructions", scriptStyle);
       if (user?.id) fd.append("user_id", user.id);
 
       const startRes = await generateAudioStory(fd);
@@ -354,6 +366,28 @@ const UploadPage = () => {
               <div className="flex items-end">
                 <p className="font-body text-xs text-gray-600">AI Enhanced and Hybrid modes coming soon</p>
               </div>
+            </div>
+
+            {/* Script Style */}
+            <div className="mb-10">
+              <label className="font-body text-xs text-gray-500 uppercase tracking-wider mb-3 block">Script style</label>
+              <div className="flex flex-wrap gap-2 mb-4">
+                {SCRIPT_PRESETS.map((p) => (
+                  <button key={p.value} onClick={() => setScriptStyle(scriptStyle === p.value ? "" : p.value)}
+                    className={`px-3 py-2 text-xs font-body tracking-wider border transition-all ${
+                      scriptStyle === p.value
+                        ? "border-[#FF006E] text-[#FF006E] bg-[#FF006E]/10"
+                        : "border-white/10 text-gray-500 hover:border-white/30 hover:text-white"
+                    }`}>
+                    {p.label}
+                    <span className="block text-[9px] opacity-60 font-normal">{p.desc}</span>
+                  </button>
+                ))}
+              </div>
+              <textarea value={scriptStyle} onChange={(e) => setScriptStyle(e.target.value)}
+                placeholder="Or write your own instructions: 'Narrate like a noir detective. Make every panel sound like a crime scene report.'"
+                className="w-full p-3 bg-transparent border border-white/10 text-white font-body text-sm resize-none focus:border-[#FF006E] transition-colors"
+                rows={2} />
             </div>
 
             <button onClick={handleGenerateStory}

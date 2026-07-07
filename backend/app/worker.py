@@ -49,7 +49,7 @@ async def upload_images_parallel(image_bytes, manga_folder):
 # -------------------------------------------------------------------
 # 2. ASYNC LOGIC
 # -------------------------------------------------------------------
-async def _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_language=DEFAULT_LANGUAGE, reading_direction="right-to-left"):
+async def _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_language=DEFAULT_LANGUAGE, reading_direction="right-to-left", custom_instructions=""):
     print(f"🚀 Starting Task: {task_id} | Manga: {manga_name} | Language: {manga_language} | Direction: {reading_direction}")
     voice = get_language_preset(manga_language)["voice"]
     
@@ -81,7 +81,7 @@ async def _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_l
 
         # 4. Generate Script (covers every panel, not just the first few)
         print("📝 Generating Script...")
-        llm_output = generate_full_script(manga_name, manga_genre, manga_language, image_bytes, reading_direction)
+        llm_output = generate_full_script(manga_name, manga_genre, manga_language, image_bytes, reading_direction, custom_instructions)
         scenes = llm_output.get("scenes", [])
 
         # 5. Generate Audio
@@ -145,7 +145,7 @@ async def _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_l
 # 3. CELERY TASK
 # -------------------------------------------------------------------
 @celery_app.task(bind=True, name="process_manga_pdf")
-def process_manga_pdf_task(self, task_id, manga_name, manga_genre, pdf_url, manga_language=DEFAULT_LANGUAGE, reading_direction="right-to-left"):
+def process_manga_pdf_task(self, task_id, manga_name, manga_genre, pdf_url, manga_language=DEFAULT_LANGUAGE, reading_direction="right-to-left", custom_instructions=""):
     """
     Celery Wrapper: Runs the async logic in a sync loop
     """
@@ -153,7 +153,7 @@ def process_manga_pdf_task(self, task_id, manga_name, manga_genre, pdf_url, mang
     asyncio.set_event_loop(loop)
     try:
         return loop.run_until_complete(
-            _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_language, reading_direction)
+            _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_language, reading_direction, custom_instructions)
         )
     finally:
         loop.close()

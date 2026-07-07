@@ -44,6 +44,7 @@ async def start_generation(
     manga_pdf: UploadFile = File(...),
     manga_language: str = Form(DEFAULT_LANGUAGE),
     reading_direction: str = Form("right-to-left"),
+    custom_instructions: str = Form(""),
     user_id: str = Form("")
 ):
     try:
@@ -69,7 +70,7 @@ async def start_generation(
         }).execute()
 
         process_manga_pdf_task.apply_async(
-            args=[task_id, manga_name, manga_genre, pdf_url, manga_language, reading_direction],
+            args=[task_id, manga_name, manga_genre, pdf_url, manga_language, reading_direction, custom_instructions],
             task_id=task_id
         )
 
