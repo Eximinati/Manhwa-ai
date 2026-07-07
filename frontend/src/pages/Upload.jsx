@@ -37,6 +37,38 @@ const UploadPage = () => {
   // Phase: upload | configure | processing | preview | rendering | done
   const [phase, setPhase] = useState("upload");
 
+  const resetAll = () => {
+    setFile(null);
+    setMangaName("");
+    setLanguage("hinglish");
+    setOrientation("vertical");
+    setReadingDirection("right-to-left");
+    setVideoUrl(null);
+    setVideoBlob(null);
+    setIsProcessing(false);
+    setProgress(0);
+    setError(null);
+    setStoryData(null);
+    setPanelImages([]);
+    setIsGeneratingVideo(false);
+    setVideoProgress(0);
+    setVideoLogs([]);
+    setIsDownloading(false);
+    setRemovedPanels(new Set());
+    setEditingScript(false);
+    setEditedScenes([]);
+    setPhase("upload");
+    ["pendingStory", "pendingFileName", "pendingVideoUrl", "isGeneratingVideo", "videoProgress", "videoLogs"].forEach(k => sessionStorage.removeItem(k));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // Escape to close
+  useEffect(() => {
+    const handler = (e) => { if (e.key === "Escape" && phase === "done") resetAll(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [phase]);
+
   // Restore session
   useEffect(() => {
     const savedData = sessionStorage.getItem("pendingStory");
@@ -447,7 +479,13 @@ const UploadPage = () => {
 
         {/* PHASE: Done */}
         {phase === "done" && videoUrl && (
-          <div>
+          <div className="group relative">
+            {/* X close button */}
+            <button onClick={resetAll}
+              className="absolute -top-1 -right-1 w-8 h-8 flex items-center justify-center text-white/20 hover:text-[#FF006E] transition-colors text-lg leading-none z-10">
+              ✕
+            </button>
+
             <div className="flex items-center justify-between mb-6">
               <div>
                 <span className="magazine-kicker">Complete</span>
@@ -468,14 +506,27 @@ const UploadPage = () => {
               <span className="flex items-center gap-1"><CheckCircle className="w-3 h-3 text-[#00F5D4]" /> Zero server cost</span>
               <span className="flex items-center gap-1"><CheckCircle className="w-3 h-3 text-[#00F5D4]" /> FFmpeg.wasm</span>
             </div>
+
+            {/* Upload another — faded divider + CTA */}
+            <div className="mt-12 pt-8 border-t border-white/5">
+              <p className="font-body text-xs text-white/20 mb-4 text-center tracking-widest uppercase">— Done with this? —</p>
+              <button onClick={resetAll}
+                className="mx-auto flex items-center gap-3 px-8 py-3 border border-white/10 text-white/40 hover:text-white hover:border-[#FF006E]/50 transition-all font-body text-sm tracking-wider">
+                + Upload Another
+              </button>
+            </div>
           </div>
         )}
 
         {/* Error */}
         {error && (
-          <div className="mt-6 flex items-center gap-3 p-4 bg-red-500/10 border border-red-500/30">
+          <div className="mt-6 flex items-center gap-3 p-4 bg-red-500/10 border border-red-500/30 group">
             <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
-            <p className="font-body text-sm text-red-300">{error}</p>
+            <p className="font-body text-sm text-red-300 flex-1">{error}</p>
+            <button onClick={() => setError(null)}
+              className="text-red-400/30 hover:text-red-400 transition-colors text-sm leading-none">
+              ✕
+            </button>
           </div>
         )}
       </div>
