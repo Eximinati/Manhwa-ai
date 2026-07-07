@@ -43,6 +43,10 @@ const UploadPage = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [maxVideoProgress, setMaxVideoProgress] = useState(0);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [readingDirection, setReadingDirection] = useState("right-to-left");
+  const [removedPanels, setRemovedPanels] = useState(new Set());
+  const [editingScript, setEditingScript] = useState(false);
+  const [editedScenes, setEditedScenes] = useState([]);
 
   const fileInputRef = useRef(null);
   const videoContainerRef = useRef(null);
@@ -253,6 +257,8 @@ const UploadPage = () => {
       formData.append("manga_name", mangaName);
       formData.append("manga_genre", "Action");
       formData.append("manga_language", language);
+      formData.append("reading_direction", readingDirection);
+      if (user?.id) formData.append("user_id", user.id);
 
       // 1. START THE TASK (Get Task ID)
       const startResponse = await generateAudioStory(formData);
@@ -296,6 +302,8 @@ const UploadPage = () => {
             }
             const images = finalResult.image_urls || finalResult.panel_images || [];
             setPanelImages(images);
+            setRemovedPanels(new Set());
+            setEditedScenes(JSON.parse(JSON.stringify(finalResult.final_video_segments || [])));
 
             // Save to session
             sessionStorage.setItem("pendingStory", JSON.stringify(finalResult));
@@ -377,9 +385,28 @@ const UploadPage = () => {
       // 🔍 DEBUG: Log exactly what we are working with now
       console.log("🎬 STARTING VIDEO GENERATION WITH:", validStoryData);
 
-      // 3. Prepare Variables safely
-      const safeScenes = validStoryData.final_video_segments || [];
-      const safeImages = validStoryData.image_urls || validStoryData.panel_images || [];
+      // 3. Prepare Variables safely — apply panel removes + script edits
+      const allImages = validStoryData.image_urls || validStoryData.panel_images || [];
+      const safeImages = allImages.filter((_, i) => !removedPanels.has(i));
+      const allScenes = validStoryData.final_video_segments || [];
+      const safeScenes = allScenes.filter(s => !removedPanels.has(s.image_page_index));
+
+      // Map scene image_page_index to new filtered indices
+      const keptIndices = allImages.map((_, i) => i).filter(i => !removedPanels.has(i));
+      const indexMap = Object.fromEntries(keptIndices.map((old, nu) => [old, nu]));
+      for (const sc of safeScenes) {
+        sc.image_page_index = indexMap[sc.image_page_index] ?? sc.image_page_index;
+      }
+
+      // Apply script edits
+      if (editedScenes.length > 0) {
+        for (let i = 0; i < safeScenes.length && i < editedScenes.length; i++) {
+          if (editedScenes[i]?.narration_segment) {
+            safeScenes[i].narration_segment = editedScenes[i].narration_segment;
+          }
+        }
+      }
+
       const safeAudio = validStoryData.audio_url;
 
       if (!safeImages || safeImages.length === 0) throw new Error("No images found in story data!");
@@ -668,29 +695,102 @@ const UploadPage = () => {
                   <Film className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-gray-400 flex-shrink-0" />
                   <span className="truncate">Extracted Panels</span>
                 </h3>
-                <span className="px-2 sm:px-2.5 md:px-3 py-0.5 sm:py-1 bg-purple-500/10 rounded-full text-xs sm:text-sm text-purple-300 border border-purple-500/20 whitespace-nowrap flex-shrink-0">
-                  {panelImages.length} panel{panelImages.length !== 1 ? 's' : ''}
-                </span>
+                <div className="flex items-center gap-2">
+                  {removedPanels.size > 0 && (
+                    <button
+                      onClick={() => setRemovedPanels(new Set())}
+                      className="text-xs text-purple-300 hover:text-white underline"
+                    >
+                      Restore all
+                    </button>
+                  )}
+                  <span className="px-2 sm:px-2.5 md:px-3 py-0.5 sm:py-1 bg-purple-500/10 rounded-full text-xs sm:text-sm text-purple-300 border border-purple-500/20 whitespace-nowrap flex-shrink-0">
+                    {panelImages.length - removedPanels.size}/{panelImages.length} panel{panelImages.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
-                {panelImages.map((url, idx) => (
-                  <div key={idx} className="relative group">
-                    <img
-                      src={url}
-                      alt={`panel-${idx}`}
-                      crossOrigin="anonymous"
-                      referrerPolicy="no-referrer"
-                      className="w-full h-28 sm:h-32 md:h-40 lg:h-48 object-cover rounded-lg sm:rounded-xl border border-purple-500/20 group-hover:scale-105 transition-all shadow-lg"
-                      onError={(e) => {
-                        console.warn("Failed to load image:", url);
-                        e.target.style.opacity = 0.5;
-                      }}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-lg sm:rounded-xl flex items-end justify-center pb-1.5 sm:pb-2">
-                      <span className="text-xs text-white font-medium">Panel {idx + 1}</span>
+                {panelImages.map((url, idx) => {
+                  const isRemoved = removedPanels.has(idx);
+                  return (
+                    <div key={idx} className={`relative group ${isRemoved ? 'opacity-40' : ''}`}>
+                      <img
+                        src={url}
+                        alt={`panel-${idx}`}
+                        crossOrigin="anonymous"
+                        referrerPolicy="no-referrer"
+                        className="w-full h-28 sm:h-32 md:h-40 lg:h-48 object-cover rounded-lg sm:rounded-xl border border-purple-500/20 group-hover:scale-105 transition-all shadow-lg"
+                        onError={(e) => {
+                          console.warn("Failed to load image:", url);
+                          e.target.style.opacity = 0.5;
+                        }}
+                      />
+                      <button
+                        onClick={() => {
+                          const next = new Set(removedPanels);
+                          if (isRemoved) next.delete(idx); else next.add(idx);
+                          setRemovedPanels(next);
+                        }}
+                        className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 hover:bg-red-500/80 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100"
+                      >
+                        <Trash className="w-3 h-3 text-white" />
+                      </button>
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-lg sm:rounded-xl flex items-end justify-center pb-1.5 sm:pb-2">
+                        <span className="text-xs text-white font-medium">Panel {idx + 1}</span>
+                      </div>
+                      {isRemoved && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <span className="text-xs font-bold text-red-400 bg-black/70 px-2 py-1 rounded">Removed</span>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Script editor */}
+          {!isProcessing && editedScenes.length > 0 && !videoUrl && (
+            <div className="mt-4 sm:mt-5 md:mt-6 bg-gray-900/30 backdrop-blur-sm p-3 sm:p-4 md:p-6 rounded-xl sm:rounded-2xl border border-purple-500/20">
+              <div className="flex items-center justify-between mb-3 sm:mb-4">
+                <h3 className="font-semibold text-sm sm:text-base md:text-lg flex items-center gap-1.5 sm:gap-2">
+                  <FileText className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-gray-400" />
+                  <span>Narration Script</span>
+                </h3>
+                <button
+                  onClick={() => setEditingScript(!editingScript)}
+                  className="text-xs text-purple-300 hover:text-white underline"
+                >
+                  {editingScript ? "Done Editing" : "Edit Script"}
+                </button>
+              </div>
+              <div className="space-y-3">
+                {editedScenes.map((scene, idx) => {
+                  if (removedPanels.has(scene.image_page_index)) return null;
+                  return (
+                    <div key={idx} className="bg-black/30 rounded-lg p-3 border border-purple-500/10">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-medium text-purple-400">Scene {idx + 1}</span>
+                        <span className="text-xs text-gray-500">({scene.duration}s)</span>
+                      </div>
+                      {editingScript ? (
+                        <textarea
+                          value={scene.narration_segment}
+                          onChange={(e) => {
+                            const next = [...editedScenes];
+                            next[idx] = { ...next[idx], narration_segment: e.target.value };
+                            setEditedScenes(next);
+                          }}
+                          className="w-full bg-black/40 border border-purple-500/20 rounded-lg p-2 text-sm text-white resize-none focus:outline-none focus:border-purple-400"
+                          rows={2}
+                        />
+                      ) : (
+                        <p className="text-sm text-gray-300">{scene.narration_segment}</p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -755,6 +855,18 @@ const UploadPage = () => {
             <option value="hinglish">Hinglish (Hindi + English)</option>
             <option value="hindi">Hindi</option>
             <option value="english">English</option>
+          </select>
+
+          <label className="text-xs sm:text-sm text-gray-400 font-medium mb-2 sm:mb-3 mt-4 sm:mt-6 block">Reading Direction</label>
+          <select
+            value={readingDirection}
+            onChange={(e) => setReadingDirection(e.target.value)}
+            disabled={isProcessing || isGeneratingVideo || storyData}
+            className="w-full p-2.5 sm:p-3 rounded-lg sm:rounded-xl border border-gray-700 bg-gray-800/30 text-white text-xs sm:text-sm focus:outline-none focus:border-purple-500"
+          >
+            <option value="right-to-left">Right to Left (Manga)</option>
+            <option value="left-to-right">Left to Right (Manhwa/Manhua)</option>
+            <option value="vertical">Top to Bottom (Webtoon)</option>
           </select>
 
           <label className="text-xs sm:text-sm text-gray-400 font-medium mb-2 sm:mb-3 mt-4 sm:mt-6 block">Video Orientation</label>

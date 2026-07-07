@@ -49,8 +49,8 @@ async def upload_images_parallel(image_bytes, manga_folder):
 # -------------------------------------------------------------------
 # 2. ASYNC LOGIC
 # -------------------------------------------------------------------
-async def _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_language=DEFAULT_LANGUAGE):
-    print(f"🚀 Starting Task: {task_id} | Manga: {manga_name} | Language: {manga_language}")
+async def _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_language=DEFAULT_LANGUAGE, reading_direction="right-to-left"):
+    print(f"🚀 Starting Task: {task_id} | Manga: {manga_name} | Language: {manga_language} | Direction: {reading_direction}")
     voice = get_language_preset(manga_language)["voice"]
     
     try:
@@ -81,7 +81,7 @@ async def _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_l
 
         # 4. Generate Script (covers every panel, not just the first few)
         print("📝 Generating Script...")
-        llm_output = generate_full_script(manga_name, manga_genre, manga_language, image_bytes)
+        llm_output = generate_full_script(manga_name, manga_genre, manga_language, image_bytes, reading_direction)
         scenes = llm_output.get("scenes", [])
 
         # 5. Generate Audio
@@ -145,7 +145,7 @@ async def _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_l
 # 3. CELERY TASK
 # -------------------------------------------------------------------
 @celery_app.task(bind=True, name="process_manga_pdf")
-def process_manga_pdf_task(self, task_id, manga_name, manga_genre, pdf_url, manga_language=DEFAULT_LANGUAGE):
+def process_manga_pdf_task(self, task_id, manga_name, manga_genre, pdf_url, manga_language=DEFAULT_LANGUAGE, reading_direction="right-to-left"):
     """
     Celery Wrapper: Runs the async logic in a sync loop
     """
@@ -153,7 +153,7 @@ def process_manga_pdf_task(self, task_id, manga_name, manga_genre, pdf_url, mang
     asyncio.set_event_loop(loop)
     try:
         return loop.run_until_complete(
-            _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_language)
+            _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_language, reading_direction)
         )
     finally:
         loop.close()

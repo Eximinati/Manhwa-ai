@@ -183,6 +183,7 @@ export async function generateVideoFromScenes({
     }
     
     let globalTimestampMicro = 0;
+    const totalDurationMicro = scenes.reduce((sum, s) => sum + (s.duration || 3.0), 0) * 1_000_000;
     
     // 2. Render Loop (Optimized)
     for (let i = 0; i < scenes.length; i++) {
@@ -224,7 +225,7 @@ export async function generateVideoFromScenes({
         }
       }
       
-      if (onProgress) onProgress(((i+1) / scenes.length) * 80);
+      if (onProgress) onProgress((globalTimestampMicro / totalDurationMicro) * 80);
     }
 
     // 3. Audio Encoding

@@ -48,6 +48,18 @@ export const generateAudioStory = async (formData) => {
 // };
 
 // ---------------------------------------------------------
+// 3. List User Jobs (GET)
+// ---------------------------------------------------------
+export const listUserJobs = async (userId, limit = 50) => {
+  const response = await fetchWithRetry(
+    `${API_URL}/api/v1/jobs?user_id=${userId}&limit=${limit}`,
+    { method: "GET" }
+  );
+  if (!response.ok) throw await parseJSONResponse(response);
+  return await parseJSONResponse(response);
+};
+
+// ---------------------------------------------------------
 // 2. Check Job Status (GET) - New Function
 // ---------------------------------------------------------
 export const checkTaskStatus = async (taskId) => {

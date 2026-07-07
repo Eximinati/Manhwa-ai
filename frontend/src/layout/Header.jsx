@@ -11,6 +11,7 @@ import {
   BookOpen,
   Home,
   User,
+  Library,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
@@ -86,6 +87,7 @@ const Navbar = () => {
   const navLinks = [
     { name: "Home", path: "/", icon: Home },
     { name: "Upload", path: "/upload", icon: Video },
+    { name: "Library", path: "/library", icon: Library },
     { name: "Docs", path: "/docs", icon: BookOpen },
     { name: "Contact", path: "/contact", icon: Mail },
   ];

@@ -41,26 +41,34 @@ def _fallback_batch_scenes(offset: int, count: int, manga_name: str):
     ]
 
 
-def _generate_batch(manga_name, manga_genre, persona, story_so_far, batch_images, offset):
+def _generate_batch(manga_name, manga_genre, persona, story_so_far, batch_images, offset, reading_direction="right-to-left"):
     """Narrate one batch of panels, continuing from `story_so_far`."""
     n = len(batch_images)
+
+    reading_hint = {
+        "right-to-left": "IMPORTANT: This is manga — panels read RIGHT-TO-LEFT, top-to-bottom.",
+        "left-to-right": "IMPORTANT: This is manhwa/manhua — panels read LEFT-TO-RIGHT, top-to-bottom.",
+        "vertical": "Panels read TOP-TO-BOTTOM only (webtoon style).",
+    }.get(reading_direction, "Panels read RIGHT-TO-LEFT (manga).")
 
     prompt = f"""
     ROLE: {persona}
     TASK: Continue narrating a recap of "{manga_name}" ({manga_genre}).
     STORY SO FAR: {story_so_far or "(this is the beginning of the chapter)"}
 
+    {reading_hint}
+
     Narrate the next {n} manga panels shown below, in order, as a continuation
     of the story above. Keep energy high and make it flow as one continuous
     recap, not isolated captions.
 
     FORMAT: Respond with JSON ONLY, exactly this shape:
-    {{
+    {{{{
       "scenes": [
         {{ "image_page_index": 0, "narration_segment": "..." }},
         ... (must have exactly {n} items, indices 0..{n - 1} in order)
       ]
-    }}
+    }}}}
     """
 
     content_list = [{"type": "text", "text": prompt}]
@@ -113,7 +121,7 @@ def _generate_batch(manga_name, manga_genre, persona, story_so_far, batch_images
         return _fallback_batch_scenes(offset, n, manga_name)
 
 
-def generate_full_script(manga_name, manga_genre, language, image_bytes_list):
+def generate_full_script(manga_name, manga_genre, language, image_bytes_list, reading_direction="right-to-left"):
     """
     Narrates every panel in `image_bytes_list` (not just the first few),
     processing them in small batches so each Groq call stays cheap/fast,
@@ -131,7 +139,7 @@ def generate_full_script(manga_name, manga_genre, language, image_bytes_list):
 
     for offset in range(0, total, BATCH_SIZE):
         batch = image_bytes_list[offset:offset + BATCH_SIZE]
-        batch_scenes = _generate_batch(manga_name, manga_genre, persona, story_so_far, batch, offset)
+        batch_scenes = _generate_batch(manga_name, manga_genre, persona, story_so_far, batch, offset, reading_direction)
         all_scenes.extend(batch_scenes)
 
         # Roll the context forward: keep it short so token usage doesn't

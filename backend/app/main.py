@@ -42,32 +42,34 @@ async def start_generation(
     manga_name: str = Form(...),
     manga_genre: str = Form(...),
     manga_pdf: UploadFile = File(...),
-    manga_language: str = Form(DEFAULT_LANGUAGE)
+    manga_language: str = Form(DEFAULT_LANGUAGE),
+    reading_direction: str = Form("right-to-left"),
+    user_id: str = Form("")
 ):
     try:
         if manga_language not in NARRATION_LANGUAGES:
             manga_language = DEFAULT_LANGUAGE
 
-        # 1. Generate ID (Using your existing method)
         task_id = str(random.getrandbits(63))
 
-        # 2. Upload PDF
         file_bytes = await manga_pdf.read()
         unique_filename = f"uploads/{task_id}_{manga_name[:10].replace(' ', '_')}.pdf"
         pdf_url = supabase_upload(file_bytes, unique_filename, "application/pdf")
 
-        # 3. Create DB Entry (Status: QUEUED)
         supabase.table("jobs").insert({
             "id": task_id,
             "status": "QUEUED",
             "manga_name": manga_name,
+            "manga_genre": manga_genre,
+            "manga_language": manga_language,
+            "reading_direction": reading_direction,
+            "user_id": user_id or None,
             "pdf_url": pdf_url,
             "created_at": "now()"
         }).execute()
 
-        # 4. ⚡ Dispatch to RabbitMQ (Optimization)
         process_manga_pdf_task.apply_async(
-            args=[task_id, manga_name, manga_genre, pdf_url, manga_language],
+            args=[task_id, manga_name, manga_genre, pdf_url, manga_language, reading_direction],
             task_id=task_id
         )
 
@@ -75,6 +77,17 @@ async def start_generation(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/jobs")
+def list_jobs(user_id: str = "", limit: int = 20, offset: int = 0):
+    if not user_id:
+        return {"jobs": []}
+    res = supabase.table("jobs").select("*")\
+        .eq("user_id", user_id)\
+        .order("created_at", desc=True)\
+        .range(offset, offset + limit - 1)\
+        .execute()
+    return {"jobs": res.data or []}
 
 @app.get("/api/v1/status/{task_id}")
 def get_status(task_id: str):
