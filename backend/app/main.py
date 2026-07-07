@@ -10,6 +10,7 @@ from app.celery_app import celery_app
 from app.worker import process_manga_pdf_task
 
 from app.utils.supabase_utils import supabase_upload
+from app.config import NARRATION_LANGUAGES, DEFAULT_LANGUAGE
 from supabase import create_client
 
 app = FastAPI()
@@ -29,16 +30,27 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 def home():
     return {"status": "Manhwa AI Running on Hugging Face (RabbitMQ + Redis)"}
 
+@app.get("/api/v1/languages")
+def list_languages():
+    return {
+        key: {"label": preset["label"]}
+        for key, preset in NARRATION_LANGUAGES.items()
+    }
+
 @app.post("/api/v1/generate_audio_story")
 async def start_generation(
     manga_name: str = Form(...),
     manga_genre: str = Form(...),
-    manga_pdf: UploadFile = File(...)
+    manga_pdf: UploadFile = File(...),
+    manga_language: str = Form(DEFAULT_LANGUAGE)
 ):
     try:
+        if manga_language not in NARRATION_LANGUAGES:
+            manga_language = DEFAULT_LANGUAGE
+
         # 1. Generate ID (Using your existing method)
         task_id = str(random.getrandbits(63))
-        
+
         # 2. Upload PDF
         file_bytes = await manga_pdf.read()
         unique_filename = f"uploads/{task_id}_{manga_name[:10].replace(' ', '_')}.pdf"
@@ -55,7 +67,7 @@ async def start_generation(
 
         # 4. ⚡ Dispatch to RabbitMQ (Optimization)
         process_manga_pdf_task.apply_async(
-            args=[task_id, manga_name, manga_genre, pdf_url],
+            args=[task_id, manga_name, manga_genre, pdf_url, manga_language],
             task_id=task_id
         )
 
@@ -70,7 +82,7 @@ def get_status(task_id: str):
     task_result = AsyncResult(task_id, app=celery_app)
     
     if task_result.state in ['PENDING', 'STARTED', 'RETRY']:
-        return {"task_id": task_id, "state": "PROCESSING", "progress": "Working..."}
+        return {"task_id": task_id, "state": "PROCESSING", "progress": 50}
     
     # Fallback to Supabase for final result
     res = supabase.table("jobs").select("*").eq("id", task_id).execute()

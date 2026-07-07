@@ -3,11 +3,13 @@ import * as Mp4Muxer from 'mp4-muxer';
 // =====================================================================
 // Constants (Optimized for Speed & Stability)
 // =====================================================================
-// ⚡ FIX 1: 720p fits within the 'Level 3.1' codec limit (fixing NotSupportedError)
-const CANVAS_WIDTH = 720;
-const CANVAS_HEIGHT = 1280;
+// ⚡ Both dimensions fit within the 'Level 3.1' codec limit (fixing NotSupportedError)
+const ORIENTATIONS = {
+  vertical: { width: 720, height: 1280 },   // Shorts / Reels style
+  horizontal: { width: 1280, height: 720 }, // Standard long-form YouTube
+};
 // ⚡ FIX 2: 24 FPS is standard for Anime and 20% faster to render than 30 FPS
-const FPS = 24; 
+const FPS = 24;
 const VIDEO_BITRATE = 2_500_000; // 2.5 Mbps
 
 // =====================================================================
@@ -29,30 +31,30 @@ async function downloadImage(url, filename, retries = 3) {
 // =====================================================================
 // Canvas Drawer (Zoom/Pan Logic)
 // =====================================================================
-function drawFrameToCanvas(ctx, img, progress, type) {
+function drawFrameToCanvas(ctx, img, progress, type, canvasWidth, canvasHeight) {
   const { width: imgW, height: imgH } = img;
-  
+
   // Clear background
   ctx.fillStyle = 'black';
-  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-  const contentWidth = Math.floor(CANVAS_WIDTH * 1.0);
-  const destX = (CANVAS_WIDTH - contentWidth) / 2; 
+  const contentWidth = Math.floor(canvasWidth * 1.0);
+  const destX = (canvasWidth - contentWidth) / 2;
 
   if (type === 'pan_down') {
     const scale = contentWidth / imgW;
     const scaledH = imgH * scale;
-    const destH = CANVAS_HEIGHT; 
+    const destH = canvasHeight;
     const hiddenHeight = scaledH - destH;
-    
+
     let drawY = 0 - (hiddenHeight * progress);
-    if (hiddenHeight <= 0) drawY = (CANVAS_HEIGHT - scaledH) / 2;
+    if (hiddenHeight <= 0) drawY = (canvasHeight - scaledH) / 2;
 
     ctx.drawImage(img, destX, drawY, contentWidth, scaledH);
-  } 
+  }
   else {
     // Zoom Effect
-    const zoomLevel = 1.0 + (0.15 * progress); 
+    const zoomLevel = 1.0 + (0.15 * progress);
     const srcW = imgW / zoomLevel;
     const srcH = imgH / zoomLevel;
     const srcX = (imgW - srcW) / 2;
@@ -61,15 +63,15 @@ function drawFrameToCanvas(ctx, img, progress, type) {
     const imgAspect = imgW / imgH;
     let drawW = contentWidth;
     let drawH = contentWidth / imgAspect;
-    const drawY = (CANVAS_HEIGHT - drawH) / 2;
+    const drawY = (canvasHeight - drawH) / 2;
 
     ctx.drawImage(img, srcX, srcY, srcW, srcH, destX, drawY, drawW, drawH);
   }
 }
 
-function determineEffectType(img) {
+function determineEffectType(img, canvasWidth, canvasHeight) {
   const imageAspect = img.height / img.width;
-  const contentAspect = CANVAS_HEIGHT / CANVAS_WIDTH;
+  const contentAspect = canvasHeight / canvasWidth;
   return (imageAspect > contentAspect * 1.5) ? 'pan_down' : 'zoom';
 }
 
@@ -139,11 +141,13 @@ export async function generateVideoFromScenes({
   scenes,
   onProgress,
   onLog,
+  orientation = 'vertical',
 }) {
   const log = (msg) => { console.log(msg); if (onLog) onLog(msg); };
+  const { width: CANVAS_WIDTH, height: CANVAS_HEIGHT } = ORIENTATIONS[orientation] || ORIENTATIONS.vertical;
 
   try {
-    log('[WebCodecs] Starting optimized generation...');
+    log(`[WebCodecs] Starting optimized generation (${orientation}, ${CANVAS_WIDTH}x${CANVAS_HEIGHT})...`);
 
     const muxer = new Mp4Muxer.Muxer({
       target: new Mp4Muxer.ArrayBufferTarget(),
@@ -157,9 +161,9 @@ export async function generateVideoFromScenes({
       error: (e) => console.error('[VideoEncoder]', e)
     });
 
-    // ⚡ FIX 1: This codec settings works perfectly with 720p
+    // ⚡ FIX 1: This codec setting works for both 720x1280 and 1280x720
     videoEncoder.configure({
-      codec: 'avc1.42001f', 
+      codec: 'avc1.42001f',
       width: CANVAS_WIDTH,
       height: CANVAS_HEIGHT,
       bitrate: VIDEO_BITRATE,
@@ -188,7 +192,7 @@ export async function generateVideoFromScenes({
       imgIdx = Math.min(imgIdx, imageBitmaps.length - 1);
 
       const img = imageBitmaps[imgIdx];
-      const effectType = determineEffectType(img);
+      const effectType = determineEffectType(img, CANVAS_WIDTH, CANVAS_HEIGHT);
       const durationSec = scene.duration || 3.0;
       const totalFrames = Math.ceil(durationSec * FPS);
 
@@ -197,7 +201,7 @@ export async function generateVideoFromScenes({
       for (let frame = 0; frame < totalFrames; frame++) {
         const progress = frame / totalFrames;
 
-        drawFrameToCanvas(ctx, img, progress, effectType);
+        drawFrameToCanvas(ctx, img, progress, effectType, CANVAS_WIDTH, CANVAS_HEIGHT);
 
         const videoFrame = new VideoFrame(canvas, {
           timestamp: globalTimestampMicro,

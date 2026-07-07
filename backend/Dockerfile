@@ -20,20 +20,23 @@ RUN wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.t
 
 # 3. Setup App & Permissions
 WORKDIR /app
-RUN useradd -m -u 1000 user
-USER user
-ENV PATH="/home/user/.local/bin:$PATH"
 
-# 4. Copy Code
-COPY --chown=user requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY --chown=user app ./app
-
-# 5. Create Startup Script (Runs Worker + API)
+# 4. Create Startup Script (Runs Worker + API) — written as root, before the
+# user switch below, since /app is root-owned and the non-root "user" can't
+# create new files in it.
 RUN echo '#!/bin/bash\n\
     celery -A app.celery_app worker --loglevel=info --concurrency=1 &\n\
     uvicorn app.main:app --host 0.0.0.0 --port 7860\n\
     ' > /app/start.sh && chmod +x /app/start.sh
+
+RUN useradd -m -u 1000 user
+USER user
+ENV PATH="/home/user/.local/bin:$PATH"
+
+# 5. Copy Code
+COPY --chown=user requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY --chown=user app ./app
 
 # 6. Start Command
 CMD ["/app/start.sh"]

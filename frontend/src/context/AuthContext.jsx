@@ -27,25 +27,6 @@ export const AuthProvider = ({ children }) => {
     return () => subscription.unsubscribe();
   }, []);
 
-  /* ---------- OTP ---------- */
-  const sendOtp = async (email) => {
-    return supabase.auth.signInWithOtp({
-      email: email.trim().toLowerCase(),
-      options: {
-        shouldCreateUser: true,
-        emailRedirectTo: window.location.origin,
-      },
-    });
-  };
-
-  const verifyOtp = async (email, token) => {
-    return supabase.auth.verifyOtp({
-      email: email.trim().toLowerCase(),
-      token: token.trim(),
-      type: "email",
-    });
-  };
-
   /* ---------- GOOGLE OAUTH ---------- */
   const signInWithGoogle = async (redirectUrl) => {
     //  Use provided redirectUrl or fallback to dynamic construction
@@ -88,8 +69,6 @@ export const AuthProvider = ({ children }) => {
   const value = {
     user,
     loading,
-    sendOtp,
-    verifyOtp,
     signInWithGoogle,
     logout,
   };

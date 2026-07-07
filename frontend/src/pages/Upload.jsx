@@ -27,6 +27,8 @@ const UploadPage = () => {
   const [file, setFile] = useState(null);
   const [mangaName, setMangaName] = useState("");
   const [mode, setMode] = useState("images");
+  const [language, setLanguage] = useState("hinglish");
+  const [orientation, setOrientation] = useState("vertical");
   const [videoUrl, setVideoUrl] = useState(null);
   const [videoBlob, setVideoBlob] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -124,6 +126,7 @@ const UploadPage = () => {
         imageUrls: data.image_urls,
         audioUrl: data.audio_url,
         scenes: data.final_video_segments,
+        orientation,
         onProgress: (p) => {
           const safeProgress = Math.min(Math.floor(p), 100);
           setVideoProgress(safeProgress);
@@ -249,6 +252,7 @@ const UploadPage = () => {
       formData.append("manga_pdf", file);
       formData.append("manga_name", mangaName);
       formData.append("manga_genre", "Action");
+      formData.append("manga_language", language);
 
       // 1. START THE TASK (Get Task ID)
       const startResponse = await generateAudioStory(formData);
@@ -395,6 +399,7 @@ const UploadPage = () => {
         imageUrls: safeImages,
         audioUrl: safeAudio,
         scenes: safeScenes,
+        orientation,
 
         // Fallback names
         images: safeImages,
@@ -739,6 +744,29 @@ const UploadPage = () => {
               </label>
             ))}
           </div>
+
+          <label className="text-xs sm:text-sm text-gray-400 font-medium mb-2 sm:mb-3 mt-4 sm:mt-6 block">Narration Language</label>
+          <select
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            disabled={isProcessing || isGeneratingVideo}
+            className="w-full p-2.5 sm:p-3 rounded-lg sm:rounded-xl border border-gray-700 bg-gray-800/30 text-white text-xs sm:text-sm focus:outline-none focus:border-purple-500"
+          >
+            <option value="hinglish">Hinglish (Hindi + English)</option>
+            <option value="hindi">Hindi</option>
+            <option value="english">English</option>
+          </select>
+
+          <label className="text-xs sm:text-sm text-gray-400 font-medium mb-2 sm:mb-3 mt-4 sm:mt-6 block">Video Orientation</label>
+          <select
+            value={orientation}
+            onChange={(e) => setOrientation(e.target.value)}
+            disabled={isGeneratingVideo}
+            className="w-full p-2.5 sm:p-3 rounded-lg sm:rounded-xl border border-gray-700 bg-gray-800/30 text-white text-xs sm:text-sm focus:outline-none focus:border-purple-500"
+          >
+            <option value="vertical">Vertical (Shorts / Reels)</option>
+            <option value="horizontal">Horizontal (Long-form 16:9)</option>
+          </select>
 
           <div className="mt-4 sm:mt-6 md:mt-8 p-2.5 sm:p-3 md:p-4 bg-purple-500/5 rounded-lg sm:rounded-xl border border-purple-500/20">
             <p className="text-xs sm:text-xs text-gray-400 leading-relaxed">

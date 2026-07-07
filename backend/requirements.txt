@@ -11,16 +11,10 @@ opencv-python-headless
 Pillow
 numpy
 
-# OCR
-pytesseract
-
 # AI/LLM
-google-generativeai
-google-cloud-pubsub
 groq
 
 # TTS
-gtts
 pydub
 
 # Storage

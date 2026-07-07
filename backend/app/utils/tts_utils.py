@@ -13,14 +13,13 @@ import hashlib
 import shutil
 import edge_tts
 from pydub import AudioSegment
-from app.config import TTS_CACHE_DIR
+from app.config import TTS_CACHE_DIR, DEFAULT_LANGUAGE, get_language_preset
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
-# Best voice for Hinglish: "hi-IN-MadhurNeural"
-# Best voice for English: "en-US-ChristopherNeural"
-VOICE = "hi-IN-MadhurNeural" 
+# Default voice used when no language/voice is specified.
+VOICE = get_language_preset(DEFAULT_LANGUAGE)["voice"]
 
 # ============================================================
 # 1. FFmpeg Safety Check
@@ -42,7 +41,7 @@ def _duration(path: str) -> float:
 # ============================================================
 # 3. MAIN FUNCTION — Neural TTS (Async)
 # ============================================================
-async def generate_narration_audio(text: str) -> tuple[str, float]:
+async def generate_narration_audio(text: str, voice: str = VOICE) -> tuple[str, float]:
     """
     Generates high-quality Neural audio.
     NOTE: This is now an ASYNC function.
@@ -55,8 +54,9 @@ async def generate_narration_audio(text: str) -> tuple[str, float]:
     if not clean_text:
         return "", 0.0
 
-    # Cache Key
-    text_hash = hashlib.md5(clean_text.encode()).hexdigest()
+    # Cache Key (voice included so the same line in different voices
+    # doesn't collide on a single cached file)
+    text_hash = hashlib.md5(f"{voice}:{clean_text}".encode()).hexdigest()
     final_path = os.path.join(TTS_CACHE_DIR, f"{text_hash}.mp3")
 
     # ------------------------------------------------------------
@@ -79,7 +79,7 @@ async def generate_narration_audio(text: str) -> tuple[str, float]:
     print(f"🎤 Generating Neural TTS ({len(clean_text)} chars)...")
     
     try:
-        communicate = edge_tts.Communicate(clean_text, VOICE)
+        communicate = edge_tts.Communicate(clean_text, voice)
         await communicate.save(final_path)
 
         dur = _duration(final_path)

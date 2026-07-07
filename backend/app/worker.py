@@ -2,27 +2,25 @@ from .celery_app import celery_app
 import asyncio
 import os
 import json
-import base64
 import requests
 import uuid
 import io
 import traceback
 from pydub import AudioSegment
-from groq import Groq
 from supabase import create_client
 
 # Import Utils
 from .utils.supabase_utils import supabase_upload
 from .utils.pdf_utils import extract_pdf_images_high_quality
 from .utils.tts_utils import generate_narration_audio
-from .utils.openai_utils import generate_cinematic_script
+from .utils.openai_utils import generate_full_script
+from .config import TEMP_DIR, get_language_preset, DEFAULT_LANGUAGE
 
 # -------------------------------------------------------------------
 # 0. SETUP CLIENTS
 # -------------------------------------------------------------------
-groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 supabase = create_client(
-    os.getenv("SUPABASE_URL"), 
+    os.getenv("SUPABASE_URL"),
     os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
 )
 
@@ -43,38 +41,17 @@ async def upload_images_parallel(image_bytes, manga_folder):
 
     tasks = [_upload(b, i) for i, b in enumerate(image_bytes)]
     results = await asyncio.gather(*tasks)
-    
+
     for idx, url in results:
         image_urls[idx] = url
     return image_urls
 
-def generate_visual_description_sync(image_bytes):
-    try:
-        base64_image = base64.b64encode(image_bytes).decode('utf-8')
-        prompt = "Describe this image in 1 energetic Hinglish sentence."
-        
-        chat_completion = groq_client.chat.completions.create(
-            messages=[{
-                "role": "user", 
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                ]
-            }],
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
-            temperature=0.6,
-            max_tokens=300,
-        )
-        return chat_completion.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"❌ Groq Vision Error: {e}")
-        return "Scene aage badhta hai..."
-
 # -------------------------------------------------------------------
 # 2. ASYNC LOGIC
 # -------------------------------------------------------------------
-async def _process_task_async(task_id, manga_name, manga_genre, pdf_url):
-    print(f"🚀 Starting Task: {task_id} | Manga: {manga_name}")
+async def _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_language=DEFAULT_LANGUAGE):
+    print(f"🚀 Starting Task: {task_id} | Manga: {manga_name} | Language: {manga_language}")
+    voice = get_language_preset(manga_language)["voice"]
     
     try:
         # 1. Download PDF
@@ -82,7 +59,7 @@ async def _process_task_async(task_id, manga_name, manga_genre, pdf_url):
         resp = requests.get(pdf_url)
         if resp.status_code != 200: raise ValueError("Failed to download PDF")
 
-        temp_pdf = f"/tmp/{uuid.uuid4()}.pdf"
+        temp_pdf = os.path.join(TEMP_DIR, f"{uuid.uuid4()}.pdf")
         with open(temp_pdf, "wb") as f:
             f.write(resp.content)
 
@@ -102,23 +79,12 @@ async def _process_task_async(task_id, manga_name, manga_genre, pdf_url):
         manga_folder = f"{manga_name.replace(' ', '_').lower()}_{str_id[:8]}"
         image_urls = await upload_images_parallel(image_bytes, manga_folder)
 
-        # 4. Generate Script
+        # 4. Generate Script (covers every panel, not just the first few)
         print("📝 Generating Script...")
-        llm_output = generate_cinematic_script(manga_name, manga_genre, "", image_bytes[:4])
+        llm_output = generate_full_script(manga_name, manga_genre, manga_language, image_bytes)
         scenes = llm_output.get("scenes", [])
 
-        # 5. Backfill Scenes
-        if len(scenes) < len(image_urls):
-            print("⚠️ Filling missing scenes...")
-            for i in range(len(scenes), len(image_urls)):
-                desc = generate_visual_description_sync(image_bytes[i])
-                scenes.append({
-                    "narration_segment": desc,
-                    "image_page_index": i,
-                    "duration": 4.0
-                })
-
-        # 6. Generate Audio
+        # 5. Generate Audio
         print("🎤 Generating Audio...")
         merged_audio = AudioSegment.empty()
         final_scenes = []
@@ -127,7 +93,7 @@ async def _process_task_async(task_id, manga_name, manga_genre, pdf_url):
         for sc in scenes:
             text = sc.get("narration_segment", "").strip()
             if text:
-                path, dur = await generate_narration_audio(text) 
+                path, dur = await generate_narration_audio(text, voice=voice)
                 merged_audio += AudioSegment.from_mp3(path)
             else:
                 dur = 2.0
@@ -138,12 +104,12 @@ async def _process_task_async(task_id, manga_name, manga_genre, pdf_url):
             timeline += dur
             final_scenes.append(sc)
 
-        # 7. Upload Audio
+        # 6. Upload Audio
         buf = io.BytesIO()
         merged_audio.export(buf, format="mp3")
         audio_url = supabase_upload(buf.getvalue(), f"{manga_folder}/audio.mp3", "audio/mpeg")
 
-        # 8. Save Result
+        # 7. Save Result
         final_result = {
             "task_id": task_id,
             "status": "SUCCESS",
@@ -155,7 +121,7 @@ async def _process_task_async(task_id, manga_name, manga_genre, pdf_url):
         }
         res_url = supabase_upload(json.dumps(final_result).encode(), f"{manga_folder}/result.json", "application/json")
 
-        # 9. Update DB
+        # 8. Update DB
         print("🔹 Updating Database...")
         supabase.table("jobs").update({
             "status": "SUCCESS",
@@ -179,13 +145,15 @@ async def _process_task_async(task_id, manga_name, manga_genre, pdf_url):
 # 3. CELERY TASK
 # -------------------------------------------------------------------
 @celery_app.task(bind=True, name="process_manga_pdf")
-def process_manga_pdf_task(self, task_id, manga_name, manga_genre, pdf_url):
+def process_manga_pdf_task(self, task_id, manga_name, manga_genre, pdf_url, manga_language=DEFAULT_LANGUAGE):
     """
     Celery Wrapper: Runs the async logic in a sync loop
     """
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        return loop.run_until_complete(_process_task_async(task_id, manga_name, manga_genre, pdf_url))
+        return loop.run_until_complete(
+            _process_task_async(task_id, manga_name, manga_genre, pdf_url, manga_language)
+        )
     finally:
         loop.close()

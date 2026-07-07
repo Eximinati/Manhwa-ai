@@ -11,7 +11,7 @@
 
 ### ⚡ Transform Your Manga PDFs into Stunning Narrated Videos with AI
 
-*Powered by Google Gemini, FFmpeg.wasm, and FastAPI | 100x Faster | Zero Backend Video Cost*
+*Powered by Groq (Llama 4 Scout), WebCodecs, and FastAPI | 100x Faster | Zero Backend Video Cost*
 
 [Features](#-features) • [Demo](#-demo) • [Quick Start](#-quick-start) • [Architecture](#-architecture) • [Deployment](#-deployment) • [API Docs](#-api-documentation)
 
@@ -32,8 +32,8 @@
 - Filters out noise and artifacts
 
 ### 🧠 **AI-Powered Narration**
-- Google Gemini for script generation
-- Hinglish/Hindi narration support
+- Groq (Llama 4 Scout vision) for script generation, batched across every panel for story continuity
+- Hinglish, Hindi, or English narration (selectable per video)
 - Context-aware storytelling
 - Natural dialogue flow
 
@@ -41,8 +41,8 @@
 <td width="50%">
 
 ### 🎬 **Browser-Based Video Generation**
-- FFmpeg.wasm for instant rendering
-- 60% content area with black bars
+- Native WebCodecs API + mp4-muxer for instant rendering (no ffmpeg download in-browser)
+- Vertical (Shorts) or horizontal (16:9 long-form) output
 - Smart animations (pan, zoom, scroll)
 - 4-5 minutes generation time
 
@@ -108,11 +108,11 @@ graph TB
     A[User Uploads PDF] --> B[FastAPI Backend]
     B --> C[PDF Extraction]
     C --> D[OCR Processing]
-    D --> E[Google Gemini LLM]
-    E --> F[TTS Audio Generation]
+    D --> E[Groq Llama 4 Scout - batched script gen]
+    E --> F[Edge-TTS Audio Generation]
     F --> G[Upload to Supabase]
     G --> H[Return JSON to Frontend]
-    H --> I[FFmpeg.wasm Video Generation]
+    H --> I[WebCodecs Video Generation]
     I --> J[Final Video Download]
     
     
@@ -129,12 +129,12 @@ graph TB
 #### **Backend (FastAPI)**
 - 🐍 **Python 3.11** - Modern async/await
 - ⚡ **FastAPI** - High-performance API
-- 🤖 **Google Gemini** - LLM script generation
-- 🎤 **gTTS** - Text-to-speech
-- 🖼️ **OpenCV + Tesseract** - OCR processing
+- 🤖 **Groq (Llama 4 Scout)** - Free-tier vision LLM for script generation
+- 🎤 **edge-tts** - Free Microsoft Edge Neural text-to-speech
+- 🖼️ **OpenCV** - Panel detection/extraction
 - 📦 **Supabase** - Cloud storage
 - 🐳 **Docker** - Containerization
-- ☁️ **Google Cloud Run** - Serverless deployment
+- ☁️ **Celery + Redis/RabbitMQ** - Background job queue
 
 </td>
 <td width="50%">
@@ -142,7 +142,7 @@ graph TB
 #### **Frontend (React + Vite)**
 - ⚛️ **React 19** - UI framework
 - ⚡ **Vite** - Ultra-fast bundler
-- 🎬 **FFmpeg.wasm** - Browser video rendering
+- 🎬 **WebCodecs API + mp4-muxer** - Native browser video rendering
 - 🎨 **Tailwind CSS** - Utility-first styling
 - 🌊 **Framer Motion** - Smooth animations
 - 📡 **React Query** - API state management
@@ -167,7 +167,7 @@ graph TB
 - Tesseract OCR (Backend only)
 
 # API Keys Needed
-- Google Gemini API Key (Free tier available)
+- Groq API Key (Free tier available at console.groq.com)
 - Supabase Project (Free tier available)
 ```
 
@@ -224,8 +224,8 @@ SUPABASE_URL=https://xxxxx.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJhbGc...
 SUPABASE_BUCKET_NAME=Manhwa_ai
 
-# Google Gemini API
-GOOGLE_API_KEY=AIzaSy...
+# Groq API (free tier)
+GROQ_API_KEY=gsk_...
 
 # Optional
 DEBUG=True
@@ -301,7 +301,7 @@ npm run preview
 cd backend
 docker build -t manhwa-backend .
 docker run -p 8000:8080 -e SUPABASE_URL=$SUPABASE_URL -e SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY 
-  -e GOOGLE_API_KEY=$GOOGLE_API_KEY \
+  -e GROQ_API_KEY=$GROQ_API_KEY \
   -e SUPABASE_BUCKET_NAME=$SUPABASE_BUCKET_NAME \
   manhwa-backend
 
@@ -374,7 +374,7 @@ gcloud run deploy manhwa-backend \
   --cpu 2 \
   --set-env-vars "SUPABASE_URL=$SUPABASE_URL" \
   --set-env-vars "SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY" \
-  --set-env-vars "GOOGLE_API_KEY=$GOOGLE_API_KEY" \
+  --set-env-vars "GROQ_API_KEY=$GROQ_API_KEY" \
   --set-env-vars "SUPABASE_BUCKET_NAME=$SUPABASE_BUCKET_NAME"
 ```
 
@@ -489,7 +489,7 @@ GCP_PROJECT_ID=your-project-id
 GCP_SERVICE_ACCOUNT_KEY=<paste full JSON key>
 SUPABASE_URL=https://xxxxx.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJhbGc...
-GOOGLE_API_KEY=AIzaSy...
+GROQ_API_KEY=gsk_...
 SUPABASE_BUCKET_NAME=Manhwa_ai
 GCP_REGION=asia-south1
 ```
