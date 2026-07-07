@@ -1,262 +1,183 @@
-// src/components/layout/Navbar.jsx
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import {
-  Menu,
-  X,
-  Video,
-  Mail,
-  LogIn,
-  LogOut,
-  BookOpen,
-  Home,
-  User,
-  Library,
-} from "lucide-react";
+import { LogOut, User, Sparkles, Menu, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
+const navLinks = [
+  { name: "Home", path: "/" },
+  { name: "Upload", path: "/upload" },
+  { name: "Library", path: "/library" },
+  { name: "Docs", path: "/docs" },
+  { name: "Contact", path: "/contact" },
+];
+
 const Navbar = () => {
-  const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
-  /* ---------------- Scroll Effect ---------------- */
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
+    const onScroll = () => setScrolled(window.scrollY > 60);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  /* ---------------- Close Menu on Route Change ---------------- */
-  useEffect(() => {
-    setIsOpen(false);
-  }, [location.pathname]);
-
-  /* ---------------- Lock Body Scroll (Mobile) ---------------- */
-  useEffect(() => {
-    if (isOpen) {
-      const scrollbarWidth =
-        window.innerWidth - document.documentElement.clientWidth;
-      document.body.style.overflow = "hidden";
-      document.body.style.paddingRight = `${scrollbarWidth}px`;
-    } else {
-      document.body.style.overflow = "";
-      document.body.style.paddingRight = "";
-    }
-
-    return () => {
-      document.body.style.overflow = "";
-      document.body.style.paddingRight = "";
-    };
-  }, [isOpen]);
-
-  /* ---------------- ESC + Resize Handling ---------------- */
-  const handleKeyDown = useCallback(
-    (e) => {
-      if (e.key === "Escape" && isOpen) setIsOpen(false);
-    },
-    [isOpen]
-  );
-
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth >= 1024 && isOpen) setIsOpen(false);
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("resize", handleResize);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("resize", handleResize);
-    };
-  }, [handleKeyDown, isOpen]);
-
-  /* ---------------- Logout ---------------- */
-  const handleLogout = async () => {
-    sessionStorage.removeItem("pendingStory");
-    sessionStorage.removeItem("pendingFileName");
-    await logout();
-    setIsOpen(false);
-    navigate("/");
-  };
-
-  /* ---------------- Navigation ---------------- */
-  const navLinks = [
-    { name: "Home", path: "/", icon: Home },
-    { name: "Upload", path: "/upload", icon: Video },
-    { name: "Library", path: "/library", icon: Library },
-    { name: "Docs", path: "/docs", icon: BookOpen },
-    { name: "Contact", path: "/contact", icon: Mail },
-  ];
+  useEffect(() => { setMenuOpen(false); }, [location.pathname]);
 
   const isActive = (path) =>
     path === "/" ? location.pathname === "/" : location.pathname.startsWith(path);
 
+  const handleLogout = async () => {
+    sessionStorage.removeItem("pendingStory");
+    sessionStorage.removeItem("pendingFileName");
+    await logout();
+    navigate("/");
+  };
+
   return (
     <>
-      {/* ================= NAVBAR ================= */}
+      {/* Desktop: floating pill */}
       <nav
-        className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${
-          scrolled
-            ? "bg-black/30 backdrop-blur-md shadow-lg"
-            : "bg-black/10"
+        className={`hidden md:flex fixed top-0 left-0 right-0 z-50 justify-center pt-4 transition-all duration-500 ${
+          scrolled ? "translate-y-0" : "translate-y-0"
         }`}
       >
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 sm:h-20 items-center justify-between">
-            {/* -------- Logo -------- */}
+        <div
+          className={`flex items-center gap-1 px-2 py-1.5 transition-all duration-500 ${
+            scrolled
+              ? "bg-[#0A0A1A]/90 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
+              : "bg-transparent"
+          }`}
+          style={{ borderRadius: "100px" }}
+        >
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-2 px-3 mr-2">
+            <img src="/manhwa-logo.png" alt="Manhwa AI" className="h-7 w-7 object-contain" />
+            <span className="display text-lg tracking-wider text-white">
+              MANHWA<span className="text-[#FF006E]">AI</span>
+            </span>
+          </Link>
+
+          {/* Nav */}
+          {navLinks.map((link) => (
             <Link
-              to="/"
-              className="flex items-center gap-2 text-white font-bold text-lg sm:text-xl shrink-0"
+              key={link.path}
+              to={link.path}
+              className={`px-4 py-2 text-sm font-body font-medium transition-all ${
+                isActive(link.path)
+                  ? "text-white bg-[#FF006E]"
+                  : "text-gray-400 hover:text-white"
+              }`}
+              style={{ borderRadius: "100px" }}
             >
-              <img
-                src="/manhwa-logo.png"
-                alt="Manhwa Logo"
-                className="h-8 w-8 sm:h-10 sm:w-10 object-contain animate-spin"
-              />
-              <span className="hidden sm:inline">MANHWA AI</span>
+              {link.name}
             </Link>
+          ))}
 
-            {/* -------- Desktop Nav -------- */}
-            <div className="hidden lg:flex items-center gap-8">
-              {navLinks.map((link) => (
-                <Link
-                  key={link.path}
-                  to={link.path}
-                  className="relative text-gray-300 hover:text-white transition font-medium"
-                >
-                  {link.name}
-                  <span
-                    className={`absolute left-0 -bottom-1 h-0.5 bg-purple-600 transition-all ${
-                      isActive(link.path)
-                        ? "w-full"
-                        : "w-0 group-hover:w-full"
-                    }`}
-                  />
-                </Link>
-              ))}
-            </div>
-
-            {/* -------- Desktop Auth -------- */}
-            <div className="hidden lg:flex items-center gap-4">
-              {user ? (
-                <div className="flex items-center gap-3 min-w-[200px] justify-end">
-                  <p className="text-sm font-medium text-white truncate">
-                    Hi, <span className="font-semibold capitalize">{user.email?.split("@")[0].split(/[._-]/)[0]}</span>
-                  </p>
-                  <button
-                    onClick={handleLogout}
-                    className="p-2 rounded-full bg-white/10 hover:bg-red-500/20 hover:text-red-400 transition-colors duration-200 shrink-0"
-                    title="Logout"
-                  >
-                    <LogOut className="w-5 h-5" />
-                  </button>
+          {/* Auth */}
+          <div className="ml-3 pl-3 border-l border-white/10 flex items-center gap-2">
+            {user ? (
+              <>
+                <div className="w-7 h-7 rounded-full bg-[#FF006E]/20 flex items-center justify-center">
+                  <User className="w-3.5 h-3.5 text-white" />
                 </div>
-              ) : (
+                <span className="text-sm font-body text-gray-300 hidden lg:inline max-w-[100px] truncate">
+                  {user.email?.split("@")[0]}
+                </span>
                 <button
-                  onClick={() => navigate("/login")}
-                  className="px-5 py-2 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold hover:shadow-lg transition min-w-[120px]"
+                  onClick={handleLogout}
+                  className="p-2 text-gray-400 hover:text-red-400 transition-colors"
+                  title="Logout"
                 >
-                  SIGN IN
+                  <LogOut className="w-4 h-4" />
                 </button>
-              )}
-            </div>
-
-            {/* -------- Mobile Toggle -------- */}
-            <button
-              onClick={() => setIsOpen(!isOpen)}
-              className="lg:hidden p-2 rounded-lg text-white hover:bg-white/10 transition"
-            >
-              {isOpen ? <X /> : <Menu />}
-            </button>
+              </>
+            ) : (
+              <button
+                onClick={() => navigate("/login")}
+                className="px-5 py-2 text-sm font-body font-semibold text-white bg-[#FF006E] hover:bg-[#FF006E]/80 transition-all"
+                style={{ borderRadius: "100px" }}
+              >
+                Sign In
+              </button>
+            )}
           </div>
         </div>
       </nav>
 
-      {/* ================= MOBILE MENU ================= */}
-      {isOpen && (
+      {/* Mobile: bottom tab bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#0A0A1A]/95 backdrop-blur-xl border-t border-white/10">
+        <div className="flex items-center justify-around py-2 px-1">
+          {navLinks.slice(0, 4).map((link) => {
+            const active = isActive(link.path);
+            return (
+              <Link
+                key={link.path}
+                to={link.path}
+                className={`flex flex-col items-center gap-0.5 px-3 py-1 transition-all ${
+                  active ? "text-[#FF006E]" : "text-gray-500"
+                }`}
+              >
+                <span className={`w-1 h-1 rounded-full ${active ? "bg-[#FF006E]" : "bg-transparent"}`} />
+                <span className="text-[10px] font-body font-medium tracking-wider">{link.name}</span>
+              </Link>
+            );
+          })}
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="flex flex-col items-center gap-0.5 px-3 py-1 text-gray-500"
+          >
+            <span className={`w-1 h-1 rounded-full ${menuOpen ? "bg-[#FF006E]" : "bg-transparent"}`} />
+            <span className="text-[10px] font-body font-medium tracking-wider">More</span>
+          </button>
+        </div>
+      </nav>
+
+      {/* Mobile: more menu */}
+      {menuOpen && (
         <>
-          <div
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 lg:hidden transition-opacity"
-            onClick={() => setIsOpen(false)}
-          />
-
-          <aside className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-xs sm:max-w-sm bg-black/30 backdrop-blur-2xl border-l border-gray-500/20 p-6 flex flex-col lg:hidden shadow-2xl">
-            {/* Header */}
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-2">
-                <img src="/manhwa-logo.png" className="w-10 h-10" alt="Logo" />
-                <span className="font-bold text-white">MANHWA AI</span>
-              </div>
-              <button onClick={() => setIsOpen(false)}>
-                <X className="text-white" />
-              </button>
-            </div>
-
-            {/* User */}
-            {user && (
-              <div className="mb-6 p-4 rounded-xl bg-gradient-to-br from-gray-500/10 to-indigo-500/10 backdrop-blur-md border border-gray-500/30 shadow-lg">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 rounded-full bg-gradient-to-br from-purple-600 to-indigo-600 shadow-lg">
-                    <User className="w-6 h-6 text-white" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-400 mb-0.5">Logged in as</p>
-                    <p className="text-sm font-semibold text-white truncate">
-                      {user.email}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Links */}
-            <nav className="flex-1 space-y-2 overflow-y-auto">
-              {navLinks.map((link) => (
+          <div className="md:hidden fixed inset-0 bg-black/60 z-50" onClick={() => setMenuOpen(false)} />
+          <div className="md:hidden fixed bottom-16 left-2 right-2 z-50 bg-[#1A1A2E] border border-white/10 p-4 animate-fade-up">
+            <div className="space-y-1">
+              {navLinks.slice(4).map((link) => (
                 <Link
                   key={link.path}
                   to={link.path}
-                  onClick={() => setIsOpen(false)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition ${
-                    isActive(link.path)
-                      ? "bg-purple-600 text-white"
-                      : "text-gray-300 hover:bg-white/5"
+                  onClick={() => setMenuOpen(false)}
+                  className={`block px-4 py-3 text-sm font-body transition-all ${
+                    isActive(link.path) ? "text-[#FF006E] bg-[#FF006E]/10" : "text-gray-400 hover:text-white"
                   }`}
                 >
-                  <link.icon className="w-5 h-5" />
                   {link.name}
                 </Link>
               ))}
-            </nav>
-
-            {/* Auth */}
-            <div className="pt-4 border-t border-purple-500/20">
-              {user ? (
-                <button
-                  onClick={handleLogout}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition"
-                >
-                  <LogOut className="w-5 h-5" />
-                  Logout
-                </button>
-              ) : (
-                <button
-                  onClick={() => navigate("/login")}
-                  className="w-full py-3 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold"
-                >
-                  Login / Sign Up
-                </button>
-              )}
+              <div className="border-t border-white/10 pt-2 mt-2">
+                {user ? (
+                  <button
+                    onClick={handleLogout}
+                    className="w-full px-4 py-3 text-sm font-body text-red-400 hover:bg-red-500/10 transition-all"
+                  >
+                    Logout
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => { setMenuOpen(false); navigate("/login"); }}
+                    className="w-full px-4 py-3 text-sm font-body font-semibold text-white bg-[#FF006E]"
+                  >
+                    Sign In
+                  </button>
+                )}
+              </div>
             </div>
-          </aside>
+          </div>
         </>
       )}
 
-      {/* Spacer */}
-      <div className="h-16 sm:h-20" />
+      {/* Spacers */}
+      <div className="hidden md:block h-16" />
+      <div className="md:hidden h-16" />
     </>
   );
 };

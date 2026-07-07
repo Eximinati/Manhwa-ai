@@ -33,7 +33,7 @@ const CursorGlow = () => {
         w-[320px] h-[320px]
         -translate-x-1/2 -translate-y-1/2
         rounded-full
-        bg-purple-500/30
+        bg-[#FF006E]/20
         blur-[150px]
         mix-blend-screen
         z-[1]

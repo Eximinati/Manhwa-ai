@@ -1,44 +1,25 @@
-import { ArrowRight } from "lucide-react";
-import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 
 const CTASection = () => {
+  const navigate = useNavigate();
+
   return (
-    <section className="relative z-10 px-4 pt-24 pb-28 overflow-visible">
-      <div className="max-w-7xl mx-auto">
-        <motion.div
-          initial={{ opacity: 0, y: 50 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-80px" }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
-          className="relative px-6 sm:px-10 py-14 sm:py-16 lg:px-20 lg:py-20 overflow-visible"
+    <section className="relative z-10 py-32 px-6">
+      <div className="max-w-3xl mx-auto text-center">
+        <span className="magazine-kicker">Ready?</span>
+        <h2 className="display text-5xl sm:text-6xl md:text-7xl text-white mt-4 mb-6 leading-[1.1]">
+          Create your first <br />
+          <span className="text-[#FF006E]">manga video</span>
+        </h2>
+        <p className="font-body text-sm text-gray-500 mb-10 max-w-md mx-auto">
+          No account needed. Just upload a PDF and we'll handle the rest.
+        </p>
+        <button
+          onClick={() => navigate("/upload")}
+          className="px-12 py-4 display text-lg tracking-wider text-white bg-[#FF006E] hover:bg-[#FF006E]/80 transition-all active:scale-[0.97]"
         >
-          {/* Gradient overlay */}
-          <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-purple-800/10 to-yellow-800/10 pointer-events-none" />
-
-          <div className="relative z-10 text-center">
-            {/* TITLE */}
-            <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-[1.15] pb-3 bg-gradient-to-r from-purple-800 via-purple-500 to-indigo-800 bg-clip-text text-transparent">
-              Ready to Bring Your Manga to Life?
-            </h2>
-
-            {/* SUBTITLE */}
-            <p className="text-gray-300 mb-10 text-base sm:text-lg md:text-xl leading-relaxed max-w-3xl mx-auto">
-              Join thousands of creators already using Manhwa AI to create
-              stunning animated content.
-            </p>
-
-            {/* CTA BUTTON */}
-            <motion.a
-              href="/upload"
-              whileHover={{ scale: 1.08 }}
-              whileTap={{ scale: 0.97 }}
-              className="inline-flex items-center gap-3 px-8 sm:px-12 py-4 sm:py-5 bg-gradient-to-r from-yellow-500 to-yellow-400 text-black rounded-full text-base sm:text-lg font-bold shadow-sm hover:shadow-md hover:shadow-yellow-500/50 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-            >
-              Start Creating Now
-              <ArrowRight className="w-5 h-5" />
-            </motion.a>
-          </div>
-        </motion.div>
+          Upload PDF
+        </button>
       </div>
     </section>
   );

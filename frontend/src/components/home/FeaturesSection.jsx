@@ -1,138 +1,35 @@
-import { Zap, Video, Image } from "lucide-react";
-import { motion } from "framer-motion";
+const features = [
+  { emoji: "⚡", title: "Fast", desc: "From PDF to video in minutes", accent: "text-[#FF006E]" },
+  { emoji: "🎬", title: "Automated", desc: "Panels, script, audio — all AI-powered", accent: "text-[#00F5D4]" },
+  { emoji: "🌐", title: "Multi-language", desc: "Hinglish, Hindi, English & more", accent: "text-[#FFD60A]" },
+  { emoji: "🎨", title: "Browser-based", desc: "No install. No upload to a server.", accent: "text-[#FF6B35]" },
+  { emoji: "✏️", title: "Editable", desc: "Remove panels, tweak script before render", accent: "text-[#9B5DE5]" },
+  { emoji: "📱", title: "Any device", desc: "Works on desktop, tablet, mobile", accent: "text-[#00F5D4]" },
+];
 
-/* ---------------- Container Stagger ---------------- */
-const containerVariants = {
-  hidden: {},
-  show: {
-    transition: {
-      staggerChildren: 0.12,
-    },
-  },
-};
-
-/* ---------------- Smooth Flip Variant ---------------- */
-const cardVariants = {
-  hidden: (direction) => ({
-    opacity: 0,
-    rotateY: direction * 45, // ⬅️ reduced from 90 → smooth
-    scale: 0.96,
-  }),
-  show: {
-    opacity: 1,
-    rotateY: 0,
-    scale: 1,
-    transition: {
-      type: "spring",
-      stiffness: 90,
-      damping: 22,
-      mass: 0.9,
-    },
-  },
-};
-
-const FeaturesSection = ({ featuresRef }) => {
-  const features = [
-    {
-      icon: Zap,
-      title: "Lightning Fast",
-      desc: "Convert manga to video in minutes with AI-powered processing",
-    },
-    {
-      icon: Video,
-      title: "HD Quality",
-      desc: "Generate stunning 1080p anime-style videos from your manga",
-    },
-    {
-      icon: Image,
-      title: "Smart Enhancement",
-      desc: "AI enhances colors, movements, and transitions automatically",
-    },
-    {
-      icon: Video,
-      title: "Auto Animation",
-      desc: "Intelligent frame interpolation for ultra-smooth animations",
-    },
-  ];
-
+const FeaturesSection = () => {
   return (
-    <section
-      ref={featuresRef}
-      className="mt-10 relative z-10 py-20 px-4"
-    >
-      <div className="max-w-7xl mx-auto">
-        {/* ---------- Header ---------- */}
-        <div className="text-center mb-16">
-          <h2
-            className="text-4xl sm:text-5xl md:text-6xl font-bold mb-6
-            bg-gradient-to-r from-purple-800 via-purple-500 to-indigo-800
-            bg-clip-text text-transparent"
+    <section className="relative z-10 py-24 px-6">
+      <div className="max-w-7xl mx-auto mb-10">
+        <span className="magazine-kicker">Features</span>
+        <h2 className="display text-4xl sm:text-5xl text-white mt-2">
+          What you <span className="text-[#FF006E]">get</span>
+        </h2>
+      </div>
+
+      <div className="horiz-scroll flex gap-3 pb-4 -mx-6 px-6">
+        {features.map((f) => (
+          <div
+            key={f.title}
+            className="flex-shrink-0 w-[220px] sm:w-[260px] bg-[#1A1A2E] border border-white/10 p-8 hover:border-[#FF006E]/30 transition-all group"
           >
-            Powerful AI Features
-          </h2>
-
-          <p className="text-gray-400 text-lg sm:text-xl max-w-3xl mx-auto">
-            State-of-the-art technology that brings your manga to life with
-            unmatched quality and performance.
-          </p>
-        </div>
-
-        {/* ---------- Cards ---------- */}
-        <motion.div
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6
-          [perspective:1200px]"
-          variants={containerVariants}
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true, margin: "-120px" }}
-        >
-          {features.map((feature, index) => {
-            const Icon = feature.icon;
-            const direction = index % 2 === 0 ? 1 : -1;
-
-            return (
-              <motion.div
-                key={index}
-                custom={direction}
-                variants={cardVariants}
-                className="group relative backdrop-blur-xl bg-purple-950/20
-                p-8 rounded-3xl border border-purple-500/20
-                hover:bg-purple-900/30 hover:border-yellow-500/50
-                transition-colors duration-500
-                overflow-hidden
-                [transform-style:preserve-3d]"
-              >
-                {/* Glow */}
-                <div
-                  className="absolute inset-0
-                  bg-gradient-to-br from-yellow-500/0 to-purple-600/0
-                  group-hover:from-yellow-500/5
-                  group-hover:to-purple-600/10
-                  transition-all duration-500"
-                />
-
-                <div className="relative z-10 flex flex-col items-center text-center">
-                  {/* Icon (NO translate / rotate now) */}
-                  <div className="mb-6 text-yellow-400">
-                    <Icon className="w-14 h-14 sm:w-16 sm:h-16" />
-                  </div>
-
-                  <h3
-                    className="text-xl sm:text-2xl font-bold mb-3
-                    text-purple-200 group-hover:text-yellow-400
-                    transition-colors duration-300"
-                  >
-                    {feature.title}
-                  </h3>
-
-                  <p className="text-gray-400 leading-relaxed text-sm sm:text-base">
-                    {feature.desc}
-                  </p>
-                </div>
-              </motion.div>
-            );
-          })}
-        </motion.div>
+            <div className={`text-3xl mb-4 group-hover:scale-110 transition-transform inline-block`}>
+              {f.emoji}
+            </div>
+            <h3 className="display text-xl tracking-wider text-white mb-2">{f.title}</h3>
+            <p className="font-body text-sm text-gray-400 leading-relaxed">{f.desc}</p>
+          </div>
+        ))}
       </div>
     </section>
   );
